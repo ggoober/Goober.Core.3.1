@@ -9,6 +9,7 @@ namespace Goober.Http.Extensions
     {
         public static void RegisterRemoteCall(this IServiceCollection services)
         {
+            services.AddHttpClient();
             services.AddMemoryCache();
             services.AddSingleton<IHttpCacheProvider, Caching.Implementation.HttpCacheProvider>();
             services.AddScoped<IHttpHelperService, HttpHelperService>();
