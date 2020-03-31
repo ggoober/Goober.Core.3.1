@@ -4,7 +4,7 @@ using System.Threading.Tasks;
 
 namespace Goober.Core.Services.Implementation
 {
-    public class CacheProvider : ICacheProvider
+    class CacheProvider : ICacheProvider
     {
         private class EmptyResultClass
         {

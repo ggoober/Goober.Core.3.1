@@ -57,7 +57,7 @@ namespace Goober.Http.Services.Implementation
 
                 var strContent = await response.Content.ReadAsStringAsync();
 
-                return await DeserializeWebResponseAsync<T>(strContent, serializerSettings ?? _defaultJsonSerializerSettings);
+                return DeserializeWebResponse<T>(strContent, serializerSettings ?? _defaultJsonSerializerSettings);
             }
         }
 
@@ -176,7 +176,7 @@ namespace Goober.Http.Services.Implementation
 
         #region private methods
 
-        private async Task<T> DeserializeWebResponseAsync<T>(string strContent, JsonSerializerSettings serializerSettings)
+        private T DeserializeWebResponse<T>(string strContent, JsonSerializerSettings serializerSettings)
         {
             try
             {
@@ -266,7 +266,7 @@ namespace Goober.Http.Services.Implementation
 
             if (contentType == ContentTypeEnum.ApplicationJson)
             {
-                result = await DeserializeWebResponseAsync<T>(responseString, serializerSettings);
+                result = DeserializeWebResponse<T>(responseString, serializerSettings);
             }
             else
             {

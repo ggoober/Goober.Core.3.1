@@ -2,7 +2,7 @@
 
 namespace Goober.Core.Services.Implementation
 {
-    internal class DateTimeService : IDateTimeService
+    class DateTimeService : IDateTimeService
     {
         public DateTime GetDateTimeNow()
         {
