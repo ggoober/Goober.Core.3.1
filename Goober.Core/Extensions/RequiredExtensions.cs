@@ -174,8 +174,7 @@ namespace Goober.Core.Extensions
             }
         }
 
-        public static void RequiredNotNull<T>(this T @object, string paramName, string message = null, object context = null)
-            where T : class
+        public static void RequiredNotNull<T>(this T @object, string paramName, string message = null, object context = null) 
         {
             if (@object != null)
             {
@@ -202,8 +201,7 @@ namespace Goober.Core.Extensions
             throw new InvalidOperationException(message: excMessage);
         }
 
-        public static void RequiredNotNull<T, TProperty>(this T @object, Expression<Func<TProperty>> propertyLambda)
-            where T : class
+        public static void RequiredNotNull<T, TProperty>(this T @object, Expression<Func<TProperty>> propertyLambda) where T : class
         {
             var value = ExpressionsUtils.GetValue(propertyLambda);
 
