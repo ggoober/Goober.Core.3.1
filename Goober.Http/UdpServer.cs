@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Microsoft.Extensions.Logging;
+using System;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
@@ -7,33 +8,34 @@ using System.Threading.Tasks;
 
 namespace Goober.Http
 {
+    public static class UdpServerExtensions
+    {
+        public static string GetStringFromBytes(this byte[] buffer)
+        {
+            if (buffer == null)
+                return null;
+
+            int nullIdx = Array.IndexOf(buffer, (byte)0);
+            nullIdx = nullIdx >= 0 ? nullIdx : buffer.Length;
+            var msg = Encoding.UTF8.GetString(buffer, 0, nullIdx);
+
+            return msg;
+        }
+    }
+
     public class UdpServerOptionsModel
     {
         /// <summary>
-        /// Option: reuse address
-        /// </summary>
-        /// <remarks>
-        /// This option will enable/disable SO_REUSEADDR if the OS support this feature
-        /// </remarks>
-        public bool ReuseAddress { get; set; }
-
-        /// <summary>
-        /// Option: enables a socket to be bound for exclusive access
-        /// </summary>
-        /// <remarks>
-        /// This option will enable/disable SO_EXCLUSIVEADDRUSE if the OS support this feature
-        /// </remarks>
-        public bool ExclusiveAddressUse { get; set; }
-
-        /// <summary>
         /// Option: receive buffer size
         /// </summary>
-        public int? ReceiveBufferSize { get; set; }
+        public int? BufferSize { get; set; }
 
         /// <summary>
         /// Option: linger state
         /// </summary>
         public LingerOption LingerState { get; set; }
+
+        public int ConnectTimeoutInMilliseconds { get; set; } = 15000;
     }
 
     /// <summary>
@@ -42,16 +44,6 @@ namespace Goober.Http
     /// <remarks>Thread-safe</remarks>
     public class UdpServer : IDisposable
     {
-        class ReceiveStringUserToken
-        {
-            public Func<SocketError, IPEndPoint, string, Task> OnReceivedStringFuncAsync { get; set; }
-        }
-
-        class SendStringUserToken
-        {
-            public Func<SocketError, Task> OnSendStringFuncAsync { get; set; }
-        }
-
         #region protected
 
         /// <summary>
@@ -63,7 +55,13 @@ namespace Goober.Http
 
         #region privates
 
+        private ILogger _logger;
+
         private UdpServerOptionsModel _options;
+
+        private SocketAsyncEventArgs receiveEventArg;
+
+        private Func<IPEndPoint, byte[], Task<byte[]>> onReceivedFuncAsync { get; set; }
 
         #endregion
 
@@ -77,7 +75,17 @@ namespace Goober.Http
         /// <summary>
         /// IP endpoint
         /// </summary>
-        public IPEndPoint ListenerEndpoint { get; }
+        public EndPoint LocalEndpoint { get; private set; }
+
+        public EndPoint RemoteEndPoint 
+        { 
+            get {
+                if (_socket.Connected == false)
+                    return null;
+
+                return _socket.RemoteEndPoint;
+            } 
+        }
 
         private bool _isReceiving = false;
 
@@ -88,7 +96,7 @@ namespace Goober.Http
         /// </summary>
         private long _bytesReceived;
         public long BytesReceived { get { return _bytesReceived; } }
-        
+
         /// <summary>
         /// Number of datagrams received by the server
         /// </summary>
@@ -115,8 +123,11 @@ namespace Goober.Http
         /// </summary>
         /// <param name="address">IP address</param>
         /// <param name="port">Port number</param>
-        public UdpServer(IPAddress address, int port, UdpServerOptionsModel options = null)
-            : this(new IPEndPoint(address, port), options)
+        public UdpServer(IPAddress address,
+            int port, Func<IPEndPoint, byte[], Task<byte[]>> responseHandlerAsync,
+            ILogger logger,
+            UdpServerOptionsModel options = null)
+            : this(new IPEndPoint(address, port), responseHandlerAsync, logger, options)
         {
 
         }
@@ -126,8 +137,11 @@ namespace Goober.Http
         /// </summary>
         /// <param name="address">IP address</param>
         /// <param name="port">Port number</param>
-        public UdpServer(string address, int port, UdpServerOptionsModel options = null)
-            : this(new IPEndPoint(IPAddress.Parse(address), port), options)
+        public UdpServer(string address, int port,
+            Func<IPEndPoint, byte[], Task<byte[]>> responseHandlerAsync,
+             ILogger logger,
+            UdpServerOptionsModel options = null)
+            : this(new IPEndPoint(IPAddress.Parse(address), port), responseHandlerAsync, logger, options)
         {
 
         }
@@ -136,25 +150,42 @@ namespace Goober.Http
         /// Initialize UDP server with a given IP endpoint
         /// </summary>
         /// <param name="receivingEndpoint">IP endpoint</param>
-        public UdpServer(IPEndPoint receivingEndpoint, UdpServerOptionsModel options = null)
+        public UdpServer(IPEndPoint receivingEndpoint,
+            Func<IPEndPoint, byte[], Task<byte[]>> responseHandlerAsync,
+            ILogger logger,
+            UdpServerOptionsModel options = null)
         {
             Id = Guid.NewGuid();
-            ListenerEndpoint = receivingEndpoint;
-            _options = options ?? new UdpServerOptionsModel
-            {
-                ExclusiveAddressUse = false,
-                ReuseAddress = false
-            };
+            LocalEndpoint = receivingEndpoint;
+
+            _options = options ?? new UdpServerOptionsModel();
 
             if (_options.LingerState == null)
             {
                 _options.LingerState = new LingerOption(true, 10);
             }
 
-            if (_options.ReceiveBufferSize == null)
+            if (_options.BufferSize == null)
             {
-                _options.ReceiveBufferSize = 256;
+                _options.BufferSize = 256;
             }
+
+            if (_options.ConnectTimeoutInMilliseconds <= 0)
+            {
+                _options.ConnectTimeoutInMilliseconds = 15000;
+            }
+
+            _logger = logger;
+
+            receiveEventArg = new SocketAsyncEventArgs();
+            receiveEventArg.Completed += ProcessReceiveCompleted;
+            receiveEventArg.RemoteEndPoint = new IPEndPoint((LocalEndpoint.AddressFamily == AddressFamily.InterNetworkV6) ? IPAddress.IPv6Any : IPAddress.Any, 0);
+
+            var bufferSize = _options.BufferSize.Value;
+            var buffer = new byte[bufferSize];
+            receiveEventArg.SetBuffer(buffer, 0, (int)buffer.Length);
+
+            this.onReceivedFuncAsync = responseHandlerAsync;
         }
 
         #endregion
@@ -171,16 +202,15 @@ namespace Goober.Http
                 throw new InvalidOperationException("already started");
 
             // Create a new server socket
-            _socket = new Socket(ListenerEndpoint.AddressFamily, SocketType.Dgram, ProtocolType.Udp);
+            _socket = new Socket(LocalEndpoint.AddressFamily, SocketType.Dgram, ProtocolType.Udp);
 
             // Apply the option: reuse address
-            _socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, _options.ReuseAddress);
-
-            //// Apply the option: exclusive address use
-            //_socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ExclusiveAddressUse, _options.ExclusiveAddressUse);
+            _socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
 
             // Bind the server socket to the IP endpoint
-            _socket.Bind(ListenerEndpoint);
+            _socket.Bind(LocalEndpoint);
+
+            LocalEndpoint = _socket.LocalEndPoint;
 
             _bytesReceived = 0;
             _datagramsReceived = 0;
@@ -236,34 +266,18 @@ namespace Goober.Http
         /// <summary>
         /// Receive datagram from the client (asynchronous)
         /// </summary>
-        public virtual void ReceiveString(Func<SocketError, IPEndPoint, string, Task> onReceivedStringFuncAsync, 
-            IPEndPoint receiveEndpoint = null, 
-            int? size = null)
+        public void StartReceiving()
         {
-            if (IsStarted == false)
-                throw new InvalidOperationException("Server not started");
-
-            if (_isReceiving == true)
-                throw new InvalidOperationException("Can't start second receiving");
-
-            // Setup event args
-            var receiveEventArg = new SocketAsyncEventArgs();
-            receiveEventArg.UserToken = new ReceiveStringUserToken { OnReceivedStringFuncAsync = onReceivedStringFuncAsync };
-            receiveEventArg.Completed += ProcessReceiveStringCompleted;
-            receiveEventArg.RemoteEndPoint = receiveEndpoint ?? new IPEndPoint((ListenerEndpoint.AddressFamily == AddressFamily.InterNetworkV6) ? IPAddress.IPv6Any : IPAddress.Any, 0);
-
-            var bufferSize = size ?? _options.ReceiveBufferSize.Value;
-            var buffer = new byte[bufferSize];
-            receiveEventArg.SetBuffer(buffer, 0, (int)buffer.Length);
-
             _isReceiving = true;
-            bool completedAsync = false;
+            var completedAsync = false;
+
+            _logger.LogInformation($"Start receiving LocalEndPoint = {_socket.LocalEndPoint.ToString()}");
 
             try
             {
                 completedAsync = _socket.ReceiveFromAsync(receiveEventArg);
             }
-            catch (Exception exc)
+            catch
             {
                 _isReceiving = false;
                 throw;
@@ -271,13 +285,11 @@ namespace Goober.Http
 
             if (completedAsync == false)
             {
-                ProcessReceiveStringCompleted(this, receiveEventArg);
+                ProcessReceiveCompleted(this, receiveEventArg);
             }
         }
 
-        public virtual void SendString(Func<SocketError, Task> onSendStringFuncAsync,
-            string msg,
-            IPEndPoint destinationEndPoint)
+        public void SendResponse(byte[] msg)
         {
             if (IsStarted == false)
                 throw new InvalidOperationException("Server not started");
@@ -285,23 +297,20 @@ namespace Goober.Http
             if (_isSending == true)
                 throw new InvalidOperationException("Can't start second send");
 
-            _socket.Connect(destinationEndPoint);
-
-            byte[] buffer = Encoding.UTF8.GetBytes(msg);
-
             var e = new SocketAsyncEventArgs();
-            e.UserToken = new SendStringUserToken { OnSendStringFuncAsync = onSendStringFuncAsync };
-            e.SetBuffer(buffer, 0, msg.Length);
-            e.Completed += ProcessSendStringCompleted;
-            
+            e.SetBuffer(msg, 0, msg.Length);
+            e.Completed += ProcessSendCompleted;
+
             _isSending = true;
             bool completedAsync = false;
+
+            _logger.LogInformation($"Send response to RemoteEndPoint = {_socket.RemoteEndPoint}");
 
             try
             {
                 completedAsync = _socket.SendAsync(e);
             }
-            catch (Exception exc)
+            catch
             {
                 _isSending = false;
                 throw;
@@ -309,7 +318,7 @@ namespace Goober.Http
 
             if (completedAsync == false)
             {
-                ProcessSendStringCompleted(this, e);
+                ProcessSendCompleted(this, e);
             }
         }
 
@@ -320,16 +329,15 @@ namespace Goober.Http
         /// <summary>
         /// This method is invoked when an asynchronous receive from operation completes
         /// </summary>
-        private void ProcessReceiveStringCompleted(object sender, SocketAsyncEventArgs e)
+        private void ProcessReceiveCompleted(object sender, SocketAsyncEventArgs e)
         {
             if (IsStarted == false)
                 throw new InvalidOperationException("Server not started");
 
             _isReceiving = false;
 
-            var receiveStringUserToken = e.UserToken as ReceiveStringUserToken;
-            if (receiveStringUserToken == null)
-                throw new InvalidOperationException($"{nameof(receiveStringUserToken)} is null");
+            if (e.SocketError != SocketError.Success)
+                throw new InvalidOperationException($"Receive error = {e.SocketError} e.RemoteEndPoint = {e.RemoteEndPoint}");
 
             long size = e.BytesTransferred;
 
@@ -340,24 +348,49 @@ namespace Goober.Http
                 Interlocked.Add(ref _bytesReceived, size);
             }
 
-            int nullIdx = Array.IndexOf(e.Buffer, (byte)0);
-            nullIdx = nullIdx >= 0 ? nullIdx : e.Buffer.Length;
-            var msg = Encoding.UTF8.GetString(e.Buffer, 0, nullIdx);
-            
-            var task = receiveStringUserToken.OnReceivedStringFuncAsync(e.SocketError, (IPEndPoint) e.RemoteEndPoint, msg);
-            task.Wait();
+            _logger.LogInformation($"Receive completed from RemoteEndPoint = {e.RemoteEndPoint.ToString()}");
+
+            var receiveTask = onReceivedFuncAsync((IPEndPoint)e.RemoteEndPoint, e.Buffer);
+            receiveTask.Wait();
+            if (receiveTask.Exception != null)
+            {
+                var baseException = receiveTask.Exception.GetBaseException();
+                throw new InvalidOperationException($"On receive fault with message = {baseException.Message}, stackTrace = {baseException.StackTrace}");
+            }
+
+            var receiveResult = receiveTask.Result;
+            if (receiveResult == null)
+            {
+                _logger.LogInformation($"Receive result is null");
+                return;
+            }
+
+            if (_socket.Connected == false)
+            {
+                var connectTask = _socket.ConnectAsync(e.RemoteEndPoint);
+                connectTask.Wait(_options.ConnectTimeoutInMilliseconds);
+
+                _logger.LogInformation($"Connected not RemoteEndPoint = {e.RemoteEndPoint}");
+            }
+            else if (_socket.RemoteEndPoint != e.RemoteEndPoint)
+            {
+                throw new InvalidOperationException($"Can't connect to remoteEndPoint = {e.RemoteEndPoint}, already connect to = {_socket.RemoteEndPoint}");
+            }
+
+            SendResponse(receiveResult);
         }
 
-        private void ProcessSendStringCompleted(object sender, SocketAsyncEventArgs e)
+        private void ProcessSendCompleted(object sender, SocketAsyncEventArgs e)
         {
             if (IsStarted == false)
                 throw new InvalidOperationException("Server not started");
 
             _isSending = false;
 
-            var sendStringUserToken = e.UserToken as SendStringUserToken;
-            if (sendStringUserToken == null)
-                throw new InvalidOperationException($"{nameof(sendStringUserToken)} is null");
+            if (e.SocketError != SocketError.Success)
+            {
+                throw new InvalidOperationException($"Send error = {e.SocketError} e.RemoteEndPoint = {e.RemoteEndPoint}");
+            }
 
             var size = e.BytesTransferred;
 
@@ -367,8 +400,7 @@ namespace Goober.Http
                 Interlocked.Add(ref _bytesSent, size);
             }
 
-            var task = sendStringUserToken.OnSendStringFuncAsync(e.SocketError);
-            task.Wait();
+            _logger.LogInformation($"Send completed");
         }
 
         #endregion
