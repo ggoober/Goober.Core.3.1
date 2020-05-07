@@ -1,12 +1,7 @@
-﻿using Goober.Http.Caching;
-using Goober.Http.Enums;
-using Goober.Http.Models;
-using Goober.Http.Services;
+﻿using Goober.Http.Services;
 using Microsoft.Extensions.Configuration;
-using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading.Tasks;
 
 namespace Goober.Http
@@ -15,128 +10,99 @@ namespace Goober.Http
     {
         #region fields
 
-        protected virtual int _defaultCacheTime { get; set; } = 5;
-
-        protected abstract string _apiSchemeAndHostConfigKey { get; set; }
-
+        protected abstract string ApiSchemeAndHostConfigKey { get; set; }
+        protected readonly IHttpHelperService HttpClientService;
         protected readonly IConfiguration Configuration;
-        protected readonly IHttpHelperService HttpHelperService;
-        protected readonly IHttpCacheProvider HttpCacheProvider;
 
         #endregion
 
         #region ctor
 
-        public BaseHttpService(
-            IConfiguration configuration,
-            IHttpHelperService httpHelperService,
-            IHttpCacheProvider httpCacheProvider)
+        protected BaseHttpService(IConfiguration configuration, IHttpHelperService httpClientService)
         {
             Configuration = configuration;
-            HttpHelperService = httpHelperService;
-            HttpCacheProvider = httpCacheProvider;
+            HttpClientService = httpClientService;
         }
 
         #endregion
 
-        protected async Task<TResponse> ExecuteGetCachedAsync<TResponse>(string path,
-            List<KeyValuePair<string, string>> queryParameters,
-            int cacheTimeInSeconds = 300,
-            int? timeoutMiliseconds = null,
-            Credentials credentials = null,
-            JsonSerializerSettings serializerSettings = null) where TResponse : class
-        {
-            var url = GetUrl(path);
-            var strQueryParameters = string.Join(";", queryParameters.Select(x => $"{x.Key}={x.Value}"));
-
-            var cacheKey = $"{this.GetType().Name}.ExecuteGetCachedAsync({url},{strQueryParameters})";
-
-            return await HttpCacheProvider.GetAsync(cacheKey: cacheKey,
-                cacheTimeInMinutes: cacheTimeInSeconds,
-                func: async () => await ExecuteGetAsync<TResponse>(path, queryParameters, timeoutMiliseconds, credentials, serializerSettings));
-        }
-
         protected async Task<TResponse> ExecuteGetAsync<TResponse>(string path,
             List<KeyValuePair<string, string>> queryParameters,
-            int? timeoutMiliseconds = null,
-            Credentials credentials = null,
-            JsonSerializerSettings serializerSettings = null) where TResponse : class
+            int timeoutMiliseconds = 15000)
         {
-            var url = GetUrl(path);
+            var urlWithoutQueryParameters = BuildUrlBySchemeAndHostAndPath(path);
 
-            var result = await HttpHelperService.ExecuteGetAsync<TResponse>(urlWithourQueryParameters: url,
+            var result = await HttpClientService.ExecuteGetAsync<TResponse>(urlWithoutQueryParameters: urlWithoutQueryParameters, 
                 queryParameters: queryParameters,
-                timeoutInMilliseconds: timeoutMiliseconds,
-                credentials: credentials,
-                serializerSettings: serializerSettings);
+                timeoutInMilliseconds: timeoutMiliseconds);
 
             return result;
         }
 
-        protected async Task<TResponse> ExecutePostCachedAsync<TResponse, TRequest>(string path,
-            TRequest request,
-            int cacheTimeInSeconds = 300,
-            int? timeoutMiliseconds = null,
-            ContentTypeEnum contentType = ContentTypeEnum.ApplicationJson,
-            Credentials credentials = null,
-            JsonSerializerSettings serializerSettings = null)
-            where TRequest : class
+        protected async Task<string> ExecuteGetAsStringAsync<TResponse>(string path,
+            List<KeyValuePair<string, string>> queryParameters,
+            int timeoutMiliseconds = 15000)
         {
-            var url = GetUrl(path);
+            var urlWithoutQueryParameters = BuildUrlBySchemeAndHostAndPath(path);
 
-            var cacheKey = $"{this.GetType().Name}.ExecutePostCachedAsync({url},{JsonConvert.SerializeObject(request)})";
-
-            return await HttpCacheProvider.GetAsync(cacheKey: cacheKey, cacheTimeInMinutes: cacheTimeInSeconds, func: async () => await ExecutePostAsync<TResponse, TRequest>(path, request, timeoutMiliseconds, contentType, credentials, serializerSettings));
-        }
-
-        protected async Task<TResponse> ExecutePostAsync<TResponse, TRequest>(string path,
-        TRequest request,
-        int? timeoutMiliseconds = null,
-        ContentTypeEnum contentType = ContentTypeEnum.ApplicationJson,
-        Credentials credentials = null,
-        JsonSerializerSettings serializerSettings = null)
-        where TRequest : class
-        {
-            var url = GetUrl(path);
-
-            var result = await HttpHelperService.ExecutePostAsync<TResponse, TRequest>(url: url,
-                bodyContent: request,
-                contentType: contentType,
-                credentials: credentials,
-                timeoutInMilliseconds: timeoutMiliseconds,
-                serializerSettings: serializerSettings);
+            var result = await HttpClientService.ExecuteGetAsStringAsync(urlWithoutQueryParameters: urlWithoutQueryParameters, 
+                queryParameters: queryParameters, 
+                timeoutInMilliseconds: timeoutMiliseconds);
 
             return result;
         }
 
-        protected async Task<string> ExecutePostAsStringAsync<TRequest>(string path, TRequest request,
-            int? timeoutMiliseconds = null,
-            ContentTypeEnum contentType = ContentTypeEnum.ApplicationJson,
-            Credentials credentials = null)
+        protected async Task<byte[]> ExecuteGetAsByteArrayAsync<TResponse>(string path,
+            List<KeyValuePair<string, string>> queryParameters,
+            int timeoutMiliseconds = 15000)
         {
-            var url = GetUrl(path);
+            var urlWithoutQueryParameters = BuildUrlBySchemeAndHostAndPath(path);
 
-            var result = await HttpHelperService.ExecutePostAsStringAsync(url: url,
-                data: request,
-                timeoutInMilliseconds: timeoutMiliseconds,
-                contentType: contentType,
-                credentials: credentials);
+            var result = await HttpClientService.ExecuteGetAsByteArrayAsync(urlWithoutQueryParameters: urlWithoutQueryParameters,
+                queryParameters: queryParameters,
+                timeoutInMilliseconds: timeoutMiliseconds);
 
             return result;
         }
 
-        protected string GetUrl(string path)
+        protected async Task<TResponse> ExecutePostAsync<TResponse, TRequest>(string path, TRequest request, int timeoutMiliseconds = 15000)
         {
-            if (string.IsNullOrEmpty(_apiSchemeAndHostConfigKey) == true)
+            var url = BuildUrlBySchemeAndHostAndPath(path);
+
+            var result = await HttpClientService.ExecutePostAsync<TResponse, TRequest>(url: url, request: request, timeoutInMilliseconds: timeoutMiliseconds);
+
+            return result;
+        }
+
+        protected async Task<string> ExecutePostAsStringAsync<TRequest>(string path, TRequest request, int timeoutMiliseconds = 15000)
+        {
+            var url = BuildUrlBySchemeAndHostAndPath(path);
+
+            var result = await HttpClientService.ExecutePostAsStringAsync(url: url, request: request, timeoutInMilliseconds: timeoutMiliseconds);
+
+            return result;
+        }
+
+        protected async Task<byte[]> ExecutePostAsByteArrayAsync<TRequest>(string path, TRequest request, int timeoutMiliseconds = 15000)
+        {
+            var url = BuildUrlBySchemeAndHostAndPath(path);
+
+            var result = await HttpClientService.ExecutePostAsByteArrayAsync(url: url, request: request, timeoutInMilliseconds: timeoutMiliseconds);
+
+            return result;
+        }
+
+        protected string BuildUrlBySchemeAndHostAndPath(string path)
+        {
+            if (string.IsNullOrEmpty(ApiSchemeAndHostConfigKey) == true)
                 throw new InvalidOperationException("ApiSchemeAndHostConfigKey is empty");
 
-            var schemeAndHost = Configuration[_apiSchemeAndHostConfigKey];
+            var schemeAndHost = Configuration[ApiSchemeAndHostConfigKey];
 
             if (string.IsNullOrEmpty(schemeAndHost))
-                throw new InvalidOperationException($"schemeAndHost is empty by key = {_apiSchemeAndHostConfigKey}");
+                throw new InvalidOperationException($"schemeAndHost is empty by key = {ApiSchemeAndHostConfigKey}");
 
-            var url = HttpHelperService.BuildUrl(schemeAndHost: schemeAndHost, urlPath: path);
-
+            var url = HttpClientService.BuildUrl(schemeAndHost: schemeAndHost, urlPath: path);
             return url;
         }
     }

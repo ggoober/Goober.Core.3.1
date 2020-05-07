@@ -1,15 +1,27 @@
 ﻿using Goober.Core.Attributes;
+using Goober.Core.Services;
+using Goober.Core.Services.Implementation;
 using Microsoft.Extensions.DependencyInjection;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
-using System.Text;
 
 namespace Goober.Core.Extensions
 {
     public static class ServiceCollectionExtensions
     {
+        public static void AddGooberDateTimeService(this IServiceCollection services)
+        {
+            services.AddSingleton<IDateTimeService, DateTimeService>();
+        }
+
+        public static void AddGooberCaching(this IServiceCollection services)
+        {
+            services.AddMemoryCache();
+            services.AddSingleton<ICacheProvider, CacheProvider>();
+        }
+
         private static readonly List<string> _serviceAndRepositoryPostfix = new List<string> { "Service", "Repository" };
 
         public static void RegisterClasses(this IServiceCollection services, 
@@ -44,17 +56,16 @@ namespace Goober.Core.Extensions
                 var interfaceType = implementType.GetInterface(interfaceName);
 
                 if (interfaceType == null && optional == false)
-                    throw new InvalidOperationException($"Can't find interface = {interfaceName} for class.Name = {implementType.Name}, class.FullName = {implementType.FullName}. Add 'HermesIgnoreRegistrationAttribute' if need ");
+                    throw new InvalidOperationException($"Can't find interface = {interfaceName} for class.Name = {implementType.Name}, class.FullName = {implementType.FullName}.");
 
                 services.Add(new ServiceDescriptor(interfaceType, implementType, serviceLifetime));
             }
         }
 
-        public static void RegisterAssemblyClasses<TAssemblyClassName>(this IServiceCollection services, List<string> classesPostfix = null, ServiceLifetime serviceLifetime = ServiceLifetime.Scoped, bool optional = false)
-            where TAssemblyClassName: class
+        public static void RegisterAssemblyClasses<TAssemblyMember>(this IServiceCollection services, List<string> classesPostfix = null, ServiceLifetime serviceLifetime = ServiceLifetime.Scoped, bool optional = false)
         {
             RegisterClasses(services: services,
-                assembly: typeof(TAssemblyClassName).Assembly,
+                assembly: typeof(TAssemblyMember).Assembly,
                 classesPostfix: classesPostfix ?? _serviceAndRepositoryPostfix,
                 serviceLifetime: serviceLifetime,
                 optional: optional);

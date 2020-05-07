@@ -1,5 +1,6 @@
 ﻿using Newtonsoft.Json;
 using Newtonsoft.Json.Converters;
+using Newtonsoft.Json.Serialization;
 using System.Collections.Generic;
 
 namespace Goober.Core.Extensions
@@ -10,7 +11,11 @@ namespace Goober.Core.Extensions
         {
             Converters = new List<JsonConverter> { new StringEnumConverter() },
             ReferenceLoopHandling = ReferenceLoopHandling.Ignore,
-            NullValueHandling = NullValueHandling.Ignore
+            ContractResolver = new CamelCasePropertyNamesContractResolver(),
+            NullValueHandling = NullValueHandling.Ignore,
+            Culture = System.Globalization.CultureInfo.InvariantCulture,
+            DateFormatHandling = DateFormatHandling.IsoDateFormat,
+            DateParseHandling = DateParseHandling.DateTime
         };
 
         public static string Serialize(this object value, JsonSerializerSettings serializerSettings = null)

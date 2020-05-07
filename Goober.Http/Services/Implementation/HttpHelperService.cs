@@ -1,33 +1,20 @@
-﻿using Goober.Http.Enums;
-using Goober.Http.Models;
+﻿using System;
+using System.Collections.Generic;
+using System.Text;
+using System.Net.Http;
+using System.Threading.Tasks;
+using System.Net.Http.Headers;
+using System.Linq;
+using System.Net;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Converters;
 using Newtonsoft.Json.Serialization;
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Net;
-using System.Net.Http;
-using System.Net.Http.Headers;
-using System.Text;
-using System.Threading.Tasks;
-using System.Xml.Serialization;
 
 namespace Goober.Http.Services.Implementation
 {
-    internal class HttpHelperService : IHttpHelperService
+    class HttpHelperService : IHttpHelperService
     {
-        private readonly IHttpClientFactory _httpClientFactory;
-
-        public HttpHelperService(
-            IHttpClientFactory httpClientFactory
-            )
-        {
-            _httpClientFactory = httpClientFactory;
-        }
-
-        private readonly JsonSerializerSettings _defaultJsonSerializerSettings = new JsonSerializerSettings
+        private static readonly JsonSerializerSettings _jsonSerializerSettings = new JsonSerializerSettings
         {
             Converters = new List<JsonConverter> { new StringEnumConverter() },
             ReferenceLoopHandling = ReferenceLoopHandling.Ignore,
@@ -38,132 +25,196 @@ namespace Goober.Http.Services.Implementation
             DateParseHandling = DateParseHandling.DateTime
         };
 
+        private const string ApplicationJsonContentTypeValue = "application/json";
 
-        public async Task<T> ExecuteGetAsync<T>(string urlWithourQueryParameters,
+        private IHttpClientFactory _httpClientFactory;
+
+        public HttpHelperService(IHttpClientFactory httpClientFactory)
+        {
+            _httpClientFactory = httpClientFactory;
+        }
+
+        public async Task<TResponse> ExecuteGetAsync<TResponse>(string urlWithoutQueryParameters,
             List<KeyValuePair<string, string>> queryParameters = null,
-            int? timeoutInMilliseconds = null,
-            Credentials credentials = null,
-            JsonSerializerSettings serializerSettings = null) where T : class
+            int timeoutInMilliseconds = 120000,
+            AuthenticationHeaderValue authenticationHeaderValue = null,
+            List<KeyValuePair<string, string>> headerValues = null)
         {
             using (var httpClient = _httpClientFactory.CreateClient())
             {
-                SetAuthorization(httpClient, credentials);
+                httpClient.Timeout = TimeSpan.FromMilliseconds(timeoutInMilliseconds);
 
-                SetTimout(httpClient, timeoutInMilliseconds);
+                var httpRequest = GenerateHttpRequestMessageWithHeader(authenticationHeaderValue, headerValues);
 
-                string url = GenerateGetUrl(urlWithourQueryParameters, queryParameters);
+                var url = ConcatUrlWithQueryParameters(urlWithoutQueryParameters, queryParameters);
 
-                var response = await httpClient.GetAsync(new Uri(url));
+                httpRequest.Method = HttpMethod.Get;
+                httpRequest.RequestUri = new Uri(url);
 
-                var strContent = await response.Content.ReadAsStringAsync();
+                var httpResponse = await httpClient.SendAsync(httpRequest);
+                if (httpResponse.StatusCode == HttpStatusCode.NoContent)
+                {
+                    return default;
+                }
+                await ThrowExceptionOnNotOKStatusCodeAsync(url, httpResponse, string.Empty);
 
-                return DeserializeWebResponse<T>(strContent, serializerSettings ?? _defaultJsonSerializerSettings);
+                var ret = await httpResponse.Content.ReadAsStringAsync();
+                return Deserialize<TResponse>(ret);
             }
         }
 
-        public async Task<string> ExecuteGetAsStringAsync(string urlWithourQueryParameters,
+        public async Task<string> ExecuteGetAsStringAsync(string urlWithoutQueryParameters,
             List<KeyValuePair<string, string>> queryParameters = null,
-            int? timeoutInMilliseconds = null,
-            Credentials credentials = null)
+            int timeoutInMilliseconds = 120000,
+            AuthenticationHeaderValue authenticationHeaderValue = null,
+            List<KeyValuePair<string, string>> headerValues = null)
         {
             using (var httpClient = _httpClientFactory.CreateClient())
             {
-                SetAuthorization(httpClient, credentials);
+                httpClient.Timeout = TimeSpan.FromMilliseconds(timeoutInMilliseconds);
 
-                SetTimout(httpClient, timeoutInMilliseconds);
+                var httpRequest = GenerateHttpRequestMessageWithHeader(authenticationHeaderValue, headerValues);
 
-                string url = GenerateGetUrl(urlWithourQueryParameters, queryParameters);
+                var url = ConcatUrlWithQueryParameters(urlWithoutQueryParameters, queryParameters);
 
-                var response = await httpClient.GetAsync(new Uri(url));
+                httpRequest.Method = HttpMethod.Get;
+                httpRequest.RequestUri = new Uri(url);
 
-                return await response.Content.ReadAsStringAsync();
+                var httpResponse = await httpClient.SendAsync(httpRequest);
+                if (httpResponse.StatusCode == HttpStatusCode.NoContent)
+                {
+                    return string.Empty;
+                }
+                await ThrowExceptionOnNotOKStatusCodeAsync(url, httpResponse, string.Empty);
+
+                var ret = await httpResponse.Content.ReadAsStringAsync();
+                return ret;
             }
         }
 
-        public async Task<byte[]> ExecuteGetAsByteArrayAsync(string urlWithourQueryParameters,
+        public async Task<byte[]> ExecuteGetAsByteArrayAsync(string urlWithoutQueryParameters,
             List<KeyValuePair<string, string>> queryParameters = null,
-            int? timeoutInMilliseconds = null,
-            Credentials credentials = null)
+            int timeoutInMilliseconds = 120000,
+            AuthenticationHeaderValue authenticationHeaderValue = null,
+            List<KeyValuePair<string, string>> headerValues = null)
         {
             using (var httpClient = _httpClientFactory.CreateClient())
             {
-                SetAuthorization(httpClient, credentials);
+                httpClient.Timeout = TimeSpan.FromMilliseconds(timeoutInMilliseconds);
 
-                SetTimout(httpClient, timeoutInMilliseconds);
+                var httpRequest = GenerateHttpRequestMessageWithHeader(authenticationHeaderValue, headerValues);
 
-                string url = GenerateGetUrl(urlWithourQueryParameters, queryParameters);
+                var url = ConcatUrlWithQueryParameters(urlWithoutQueryParameters, queryParameters);
 
-                var resultString = await httpClient.GetAsync(new Uri(url));
+                httpRequest.Method = HttpMethod.Get;
+                httpRequest.RequestUri = new Uri(url);
 
-                return await resultString.Content.ReadAsByteArrayAsync();
+                var httpResponse = await httpClient.SendAsync(httpRequest);
+                if (httpResponse.StatusCode == HttpStatusCode.NoContent)
+                {
+                    return null;
+                }
+                await ThrowExceptionOnNotOKStatusCodeAsync(url, httpResponse, string.Empty);
+
+                var ret = await httpResponse.Content.ReadAsByteArrayAsync();
+                return ret;
             }
         }
 
-        public async Task<T> ExecutePostAsync<T, U>(string url,
-            U bodyContent,
-            ContentTypeEnum contentType = ContentTypeEnum.ApplicationJson,
-            Credentials credentials = null,
-            int? timeoutInMilliseconds = null,
-            JsonSerializerSettings serializerSettings = null)
+        public async Task<TResponse> ExecutePostAsync<TResponse, TRequest>(string url,
+            TRequest request,
+            int timeoutInMilliseconds = 120000,
+            AuthenticationHeaderValue authenticationHeaderValue = null,
+            List<KeyValuePair<string, string>> headerValues = null)
         {
             using (var httpClient = _httpClientFactory.CreateClient())
             {
-                SetAuthorization(httpClient, credentials);
+                httpClient.Timeout = TimeSpan.FromMilliseconds(timeoutInMilliseconds);
 
-                SetTimout(httpClient, timeoutInMilliseconds);
+                var strRequest = Serialize(request);
 
-                var mediaType = GetMediaType(contentType);
+                var httpRequest = GeneratePostHttpRequestMessage(url: url,
+                    strRequest: strRequest,
+                    applicationJsonContentTypeValue: ApplicationJsonContentTypeValue,
+                    authenticationHeaderValue: authenticationHeaderValue,
+                    headerValues: headerValues);
 
-                var strBody = JsonConvert.SerializeObject(bodyContent, serializerSettings ?? _defaultJsonSerializerSettings);
+                var httpResponse = await httpClient.SendAsync(httpRequest);
 
-                var content = new StringContent(strBody, Encoding.UTF8, mediaType);
+                if (httpResponse.StatusCode == HttpStatusCode.NoContent)
+                {
+                    return default;
+                }
+                await ThrowExceptionOnNotOKStatusCodeAsync(url, httpResponse, strRequest);
 
-                var responseMessage = await httpClient.PostAsync(url, content);
-
-                return await ProcessResponseMessageAsync<T>(responseMessage, url, strBody, contentType, serializerSettings);
+                var ret = await httpResponse.Content.ReadAsStringAsync();
+                return Deserialize<TResponse>(ret);
             }
         }
 
-        public async Task<string> ExecutePostAsStringAsync<TRequest>(string url, TRequest data,
-            ContentTypeEnum contentType = ContentTypeEnum.ApplicationJson, int? timeoutInMilliseconds = null, Credentials credentials = null)
+        public async Task<byte[]> ExecutePostAsByteArrayAsync<TRequest>(string url,
+            TRequest request,
+            int timeoutInMilliseconds = 120000,
+            AuthenticationHeaderValue authenticationHeaderValue = null,
+            List<KeyValuePair<string, string>> headerValues = null)
         {
             using (var httpClient = _httpClientFactory.CreateClient())
             {
-                SetAuthorization(httpClient, credentials);
+                httpClient.Timeout = TimeSpan.FromMilliseconds(timeoutInMilliseconds);
 
-                SetTimout(httpClient, timeoutInMilliseconds);
+                var strRequest = Serialize(request);
 
-                var jsonString = JsonConvert.SerializeObject(data);
+                var httpRequest = GeneratePostHttpRequestMessage(url: url,
+                    strRequest: strRequest,
+                    applicationJsonContentTypeValue: ApplicationJsonContentTypeValue,
+                    authenticationHeaderValue: authenticationHeaderValue,
+                    headerValues: headerValues);
 
-                var mediaType = GetMediaType(contentType);
+                var httpResponse = await httpClient.SendAsync(httpRequest);
 
-                var content = new StringContent(jsonString, Encoding.UTF8, mediaType);
+                if (httpResponse.StatusCode == HttpStatusCode.NoContent)
+                {
+                    return null;
+                }
+                await ThrowExceptionOnNotOKStatusCodeAsync(url, httpResponse, strRequest);
 
-                var responseMessage = await httpClient.PostAsync(url, content);
-
-                var res = await ProcessResponseMessageAsStringAsync(responseMessage, url, jsonString);
-
-                return res;
+                var ret = await httpResponse.Content.ReadAsByteArrayAsync();
+                return ret;
             }
         }
 
-        public async Task<byte[]> ExecutePostWithByteArrayResponseAsync<TRequest>(string url, TRequest parameters, int? timeoutInMilliseconds = null)
+        public async Task<string> ExecutePostAsStringAsync<TRequest>(string url,
+            TRequest request,
+            int timeoutInMilliseconds = 120000,
+            AuthenticationHeaderValue authenticationHeaderValue = null,
+            List<KeyValuePair<string, string>> headerValues = null)
         {
             using (var httpClient = _httpClientFactory.CreateClient())
             {
-                SetTimout(httpClient, timeoutInMilliseconds);
+                httpClient.Timeout = TimeSpan.FromMilliseconds(timeoutInMilliseconds);
 
-                var jsonSerialized = JsonConvert.SerializeObject(parameters);
+                var strRequest = Serialize(request);
 
-                var content = new StringContent(jsonSerialized, Encoding.UTF8, "application/json");
+                var httpRequest = GeneratePostHttpRequestMessage(url: url,
+                    strRequest: strRequest,
+                    applicationJsonContentTypeValue: ApplicationJsonContentTypeValue,
+                    authenticationHeaderValue: authenticationHeaderValue,
+                    headerValues: headerValues);
 
-                var httpResponse = httpClient.PostAsync(url, content).Result;
+                var httpResponse = await httpClient.SendAsync(httpRequest);
+                if (httpResponse.StatusCode == HttpStatusCode.NoContent)
+                {
+                    return string.Empty;
+                }
 
-                return await ProcessByteArrayResponseMessageAsync(httpResponse, url, jsonSerialized);
+                await ThrowExceptionOnNotOKStatusCodeAsync(url, httpResponse, strRequest);
+
+                var ret = await httpResponse.Content.ReadAsStringAsync();
+                return ret;
             }
         }
 
-        public string BuildUrl(string schemeAndHost, string urlPath, bool joinUrlAsIs = false)
+        public string BuildUrl(string schemeAndHost, string urlPath)
         {
             var baseUri = new UriBuilder(new Uri(new Uri(schemeAndHost), urlPath));
 
@@ -176,167 +227,77 @@ namespace Goober.Http.Services.Implementation
 
         #region private methods
 
-        private T DeserializeWebResponse<T>(string strContent, JsonSerializerSettings serializerSettings)
+        private static string Serialize(object value, JsonSerializerSettings serializerSettings = null)
         {
-            try
-            {
-                return JsonConvert.DeserializeObject<T>(strContent, serializerSettings ?? _defaultJsonSerializerSettings);
-            }
-            catch (Exception exc)
-            {
-                throw new InvalidOperationException($"Can't deserialize to Type = {typeof(T).Name} value: {strContent}, exc.message = {exc.Message}");
-            }
+            return JsonConvert.SerializeObject(value, serializerSettings ?? _jsonSerializerSettings);
         }
 
-        private string GenerateCredentials(string login, string password)
-            => Convert.ToBase64String(Encoding.ASCII.GetBytes($"{login}:{password}"));
-
-        private void SetAuthorization(HttpClient client, Credentials credentials)
+        private static T Deserialize<T>(string value, JsonSerializerSettings serializerSettings = null)
         {
-            if (credentials == null) return;
+            return JsonConvert.DeserializeObject<T>(value, serializerSettings ?? _jsonSerializerSettings);
+        }
 
-            if ((string.IsNullOrWhiteSpace(credentials.Login) || string.IsNullOrWhiteSpace(credentials.Password))
-                 && string.IsNullOrWhiteSpace(credentials.Token))
+        private static HttpRequestMessage GeneratePostHttpRequestMessage(string url,
+            string strRequest,
+            string applicationJsonContentTypeValue,
+            AuthenticationHeaderValue authenticationHeaderValue,
+            List<KeyValuePair<string, string>> headerValues)
+        {
+            var ret = GenerateHttpRequestMessageWithHeader(authenticationHeaderValue, headerValues);
+
+            ret.Method = HttpMethod.Post;
+            ret.RequestUri = new Uri(url);
+
+            ret.Content = new StringContent(strRequest, Encoding.UTF8, applicationJsonContentTypeValue);
+
+            return ret;
+        }
+
+        private static async Task ThrowExceptionOnNotOKStatusCodeAsync(string url, HttpResponseMessage httpResponse, string strRequest)
+        {
+            if (httpResponse.StatusCode == HttpStatusCode.OK)
+            {
                 return;
-
-            var token = string.IsNullOrEmpty(credentials.Token)
-                ? GenerateCredentials(credentials.Login, credentials.Password)
-                : credentials.Token;
-
-            client.DefaultRequestHeaders.Authorization
-                = new AuthenticationHeaderValue($"{credentials.Type}", token);
-        }
-
-        private void SetTimout(HttpClient client, int? timeoutInMilliseconds)
-        {
-            if (timeoutInMilliseconds.HasValue)
-            {
-                client.Timeout = TimeSpan.FromMilliseconds(timeoutInMilliseconds.Value);
-            }
-        }
-
-        private async Task<byte[]> ProcessByteArrayResponseMessageAsync(HttpResponseMessage httpResponseMessage, string url, string requestBody)
-        {
-            if (httpResponseMessage.StatusCode == HttpStatusCode.NoContent)
-            {
-                return new byte[0];
             }
 
-            if (httpResponseMessage.StatusCode != HttpStatusCode.OK)
+            var exception = new WebException($"Request({url}) fault with code = {httpResponse.StatusCode}, data: {strRequest}");
+            if (httpResponse.StatusCode == HttpStatusCode.InternalServerError)
             {
-                var exception = new WebException($"Request({url}) fault with code = {httpResponseMessage.StatusCode}, parameters = {requestBody}");
-                if (httpResponseMessage.StatusCode == HttpStatusCode.InternalServerError)
+                var jsonErrorString = await httpResponse.Content.ReadAsStringAsync();
+                exception.Data["JsonError"] = jsonErrorString;
+            }
+
+            throw exception;
+        }
+
+        private static HttpRequestMessage GenerateHttpRequestMessageWithHeader(AuthenticationHeaderValue authenticationHeaderValue, List<KeyValuePair<string, string>> headerValues)
+        {
+            var httpRequest = new HttpRequestMessage();
+            httpRequest.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue(ApplicationJsonContentTypeValue));
+
+            if (authenticationHeaderValue != null)
+            {
+                httpRequest.Headers.Authorization = authenticationHeaderValue;
+            }
+
+            if (headerValues != null && headerValues.Any())
+            {
+                foreach (var item in headerValues)
                 {
-                    var byteError = await httpResponseMessage.Content.ReadAsByteArrayAsync();
-                    exception.Data["ErrorMessage"] = byteError.ToString();
+                    httpRequest.Headers.Add(item.Key, item.Value);
                 }
-
-                throw exception;
             }
 
-            return await httpResponseMessage.Content.ReadAsByteArrayAsync();
+            return httpRequest;
         }
 
-        private async Task<T> ProcessResponseMessageAsync<T>(HttpResponseMessage responseMessage,
-            string url,
-            string strBody,
-            ContentTypeEnum contentType,
-            JsonSerializerSettings serializerSettings)
+        private static string ConcatUrlWithQueryParameters(string urlWithoutQueryParameters, List<KeyValuePair<string, string>> queryParameters)
         {
-            if (responseMessage.StatusCode == HttpStatusCode.NoContent)
+            var url = urlWithoutQueryParameters;
+
+            if (queryParameters != null && queryParameters.Any() == true)
             {
-                return default(T);
-            }
-
-            T result;
-            var responseString = await responseMessage.Content?.ReadAsStringAsync();
-
-            if (responseMessage.StatusCode != HttpStatusCode.OK
-                && responseMessage.StatusCode != HttpStatusCode.Created
-                && responseMessage.StatusCode != HttpStatusCode.Accepted)
-            {
-                var exception = new HermesWebException($"Request({url}) fault with code = {responseMessage.StatusCode}, data: {strBody}", responseMessage.StatusCode, responseString);
-                if (responseMessage.StatusCode == HttpStatusCode.InternalServerError)
-                {
-                    exception.Data["ErrorMessage"] = responseString;
-                }
-
-                throw exception;
-            }
-
-            if (contentType == ContentTypeEnum.ApplicationJson)
-            {
-                result = DeserializeWebResponse<T>(responseString, serializerSettings);
-            }
-            else
-            {
-                using (var stream = new MemoryStream(StringToUTF8ByteArray(responseString)))
-                {
-                    result = (T)new XmlSerializer(typeof(T)).Deserialize(stream);
-                }
-
-            }
-
-            return result;
-        }
-
-        private async Task<string> ProcessResponseMessageAsStringAsync(HttpResponseMessage responseMessage,
-            string url,
-            string strContent)
-        {
-            if (responseMessage.StatusCode == HttpStatusCode.NoContent)
-            {
-                return default(string);
-            }
-
-            var responseString = await responseMessage.Content.ReadAsStringAsync();
-
-            if (responseMessage.StatusCode != HttpStatusCode.OK
-                && responseMessage.StatusCode != HttpStatusCode.Created
-                && responseMessage.StatusCode != HttpStatusCode.Accepted)
-            {
-                var exception = new HermesWebException($"Request({url}) fault with code = {responseMessage.StatusCode}, data: {strContent}", responseMessage.StatusCode, responseString);
-                if (responseMessage.StatusCode == HttpStatusCode.InternalServerError)
-                {
-                    exception.Data["ErrorMessage"] = responseString;
-                }
-                throw exception;
-            }
-
-            return responseString;
-        }
-
-        private string GetMediaType(ContentTypeEnum contentType)
-        {
-            switch (contentType)
-            {
-                case ContentTypeEnum.ApplicationJson:
-                    return "application/json";
-                case ContentTypeEnum.ApplicationXml:
-                    return "application/xml";
-                case ContentTypeEnum.TextJson:
-                    return "text/json";
-                case ContentTypeEnum.TextXml:
-                    return "text/xml";
-                default:
-                    throw new NotSupportedException($"{contentType} is not supported");
-            }
-        }
-
-        private byte[] StringToUTF8ByteArray(string pXmlString)
-        {
-            var encoding = new UTF8Encoding();
-            byte[] byteArray = encoding.GetBytes(pXmlString);
-            return byteArray;
-        }
-
-        private static string GenerateGetUrl(string urlWithourQueryParameters, List<KeyValuePair<string, string>> queryParameters)
-        {
-            var url = urlWithourQueryParameters;
-
-            if (queryParameters != null && queryParameters.Any())
-            {
-                url += "?" + string.Join("&", queryParameters.Select(x => $"{x.Key}={x.Value}"));
+                return url + "?" + string.Join(separator: "&", values: queryParameters.Select(x => $"{x.Key}={x.Value}"));
             }
 
             return url;

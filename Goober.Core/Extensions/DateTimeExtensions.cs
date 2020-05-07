@@ -1,7 +1,4 @@
-﻿using Goober.Core.Services;
-using Goober.Core.Services.Implementation;
-using Microsoft.Extensions.DependencyInjection;
-using System;
+﻿using System;
 using System.Globalization;
 using System.Linq;
 
@@ -18,11 +15,6 @@ namespace Goober.Core.Extensions
             return parseResult;
         }
 
-        public static void RegisterDateTimeService(this IServiceCollection services)
-        {
-            services.AddSingleton<IDateTimeService, DateTimeService>();
-        }
-        
         public static DateTime? ToDateTimeApproximately(this string value, DateTime currentDateTime, int maxDeltaInHours, out bool wasOutOfDelta)
         {
             wasOutOfDelta = false;
