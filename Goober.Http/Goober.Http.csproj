@@ -9,6 +9,8 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Remove="Services\Implementation\UdpHelperService.cs" />
+    <Compile Remove="Services\IUdpHelperService.cs" />
     <Compile Remove="UdpServer.cs" />
   </ItemGroup>
 
@@ -17,6 +19,11 @@
     <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="3.1.3" />
     <PackageReference Include="Microsoft.Extensions.Http" Version="3.1.3" />
     <PackageReference Include="Newtonsoft.Json" Version="12.0.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="Abstractions\" />
+    <Folder Include="Enums\" />
   </ItemGroup>
 
 </Project>

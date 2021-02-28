@@ -1,7 +1,9 @@
 ﻿using Goober.Http.Services;
+using Goober.Http.Utils;
 using Microsoft.Extensions.Configuration;
 using System;
 using System.Collections.Generic;
+using System.Net.Http.Headers;
 using System.Threading.Tasks;
 
 namespace Goober.Http
@@ -11,14 +13,14 @@ namespace Goober.Http
         #region fields
 
         protected abstract string ApiSchemeAndHostConfigKey { get; set; }
-        protected readonly IHttpHelperService HttpClientService;
+        protected readonly IHttpJsonHelperService HttpClientService;
         protected readonly IConfiguration Configuration;
 
         #endregion
 
         #region ctor
 
-        protected BaseHttpService(IConfiguration configuration, IHttpHelperService httpClientService)
+        protected BaseHttpService(IConfiguration configuration, IHttpJsonHelperService httpClientService)
         {
             Configuration = configuration;
             HttpClientService = httpClientService;
@@ -28,66 +30,74 @@ namespace Goober.Http
 
         protected async Task<TResponse> ExecuteGetAsync<TResponse>(string path,
             List<KeyValuePair<string, string>> queryParameters,
-            int timeoutMiliseconds = 15000)
+            AuthenticationHeaderValue authenticationHeaderValue = null,
+            List<KeyValuePair<string, string>> headerValues = null,
+            int timeoutMiliseconds = 12000)
         {
             var urlWithoutQueryParameters = BuildUrlBySchemeAndHostAndPath(path);
 
-            var result = await HttpClientService.ExecuteGetAsync<TResponse>(urlWithoutQueryParameters: urlWithoutQueryParameters, 
+            var result = await HttpClientService.ExecuteGetAsync<TResponse>(
+                urlWithoutQueryParameters: urlWithoutQueryParameters, 
                 queryParameters: queryParameters,
-                timeoutInMilliseconds: timeoutMiliseconds);
+                timeoutInMilliseconds: timeoutMiliseconds,
+                authenticationHeaderValue: authenticationHeaderValue,
+                headerValues: headerValues);
 
             return result;
         }
 
-        protected async Task<string> ExecuteGetAsStringAsync<TResponse>(string path,
+        protected async Task<string> ExecuteGetStringAsync(string path,
             List<KeyValuePair<string, string>> queryParameters,
-            int timeoutMiliseconds = 15000)
+            AuthenticationHeaderValue authenticationHeaderValue = null,
+            List<KeyValuePair<string, string>> headerValues = null,
+            int timeoutMiliseconds = 12000)
         {
             var urlWithoutQueryParameters = BuildUrlBySchemeAndHostAndPath(path);
 
-            var result = await HttpClientService.ExecuteGetAsStringAsync(urlWithoutQueryParameters: urlWithoutQueryParameters, 
-                queryParameters: queryParameters, 
-                timeoutInMilliseconds: timeoutMiliseconds);
-
-            return result;
-        }
-
-        protected async Task<byte[]> ExecuteGetAsByteArrayAsync<TResponse>(string path,
-            List<KeyValuePair<string, string>> queryParameters,
-            int timeoutMiliseconds = 15000)
-        {
-            var urlWithoutQueryParameters = BuildUrlBySchemeAndHostAndPath(path);
-
-            var result = await HttpClientService.ExecuteGetAsByteArrayAsync(urlWithoutQueryParameters: urlWithoutQueryParameters,
+            var result = await HttpClientService.ExecuteGetStringAsync(
+                urlWithoutQueryParameters: urlWithoutQueryParameters,
                 queryParameters: queryParameters,
-                timeoutInMilliseconds: timeoutMiliseconds);
+                timeoutInMilliseconds: timeoutMiliseconds,
+                authenticationHeaderValue: authenticationHeaderValue,
+                headerValues: headerValues);
 
             return result;
         }
 
-        protected async Task<TResponse> ExecutePostAsync<TResponse, TRequest>(string path, TRequest request, int timeoutMiliseconds = 15000)
+        protected async Task<TResponse> ExecutePostAsync<TResponse, TRequest>(string path,
+            TRequest request,
+            AuthenticationHeaderValue authenticationHeaderValue = null,
+            List<KeyValuePair<string, string>> headerValues = null,
+            int timeoutInMilliseconds = 120000)
         {
             var url = BuildUrlBySchemeAndHostAndPath(path);
 
-            var result = await HttpClientService.ExecutePostAsync<TResponse, TRequest>(url: url, request: request, timeoutInMilliseconds: timeoutMiliseconds);
+            var result = await HttpClientService.ExecutePostAsync<TResponse, TRequest>(
+                    url: url,
+                    request: request,
+                    authenticationHeaderValue: authenticationHeaderValue,
+                    headerValues: headerValues,
+                    timeoutInMilliseconds: timeoutInMilliseconds
+                );
 
             return result;
         }
 
-        protected async Task<string> ExecutePostAsStringAsync<TRequest>(string path, TRequest request, int timeoutMiliseconds = 15000)
+        protected async Task<string> ExecutePostStringAsync<TRequest>(string path,
+            TRequest request,
+            AuthenticationHeaderValue authenticationHeaderValue = null,
+            List<KeyValuePair<string, string>> headerValues = null,
+            int timeoutInMilliseconds = 120000)
         {
             var url = BuildUrlBySchemeAndHostAndPath(path);
 
-            var result = await HttpClientService.ExecutePostAsStringAsync(url: url, request: request, timeoutInMilliseconds: timeoutMiliseconds);
-
-            return result;
-        }
-
-        protected async Task<byte[]> ExecutePostAsByteArrayAsync<TRequest>(string path, TRequest request, int timeoutMiliseconds = 15000)
-        {
-            var url = BuildUrlBySchemeAndHostAndPath(path);
-
-            var result = await HttpClientService.ExecutePostAsByteArrayAsync(url: url, request: request, timeoutInMilliseconds: timeoutMiliseconds);
+            var result = await HttpClientService.ExecutePostStringAsync<TRequest>(
+                    url: url,
+                    request: request,
+                    authenticationHeaderValue: authenticationHeaderValue,
+                    headerValues: headerValues,
+                    timeoutInMilliseconds: timeoutInMilliseconds
+                );
 
             return result;
         }
@@ -102,7 +112,7 @@ namespace Goober.Http
             if (string.IsNullOrEmpty(schemeAndHost))
                 throw new InvalidOperationException($"schemeAndHost is empty by key = {ApiSchemeAndHostConfigKey}");
 
-            var url = HttpClientService.BuildUrl(schemeAndHost: schemeAndHost, urlPath: path);
+            var url = HttpUtils.BuildUrl(schemeAndHost: schemeAndHost, urlPath: path);
             return url;
         }
     }
