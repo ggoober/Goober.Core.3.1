@@ -20,21 +20,19 @@ namespace Goober.Core.Extensions
             return value.Trim();
         }
 
-        public static string ToLowerAndTrim(this string value)
-        {
-            return value.ToLower().Trim();
-        }
-
         public static string ToLowerAndTrimSafety(this string value)
         {
             if (string.IsNullOrEmpty(value) == true)
                 return string.Empty;
 
-            return value.ToLowerAndTrim();
+            return value.ToLower().Trim();
         }
 
-        public static string RemoveDoubleSpaces(this string value)
+        public static string RemoveDoubleSpacesSafety(this string value)
         {
+            if (value == null)
+                return null;
+
             return _rxDoubleSpaces.Replace(value, " ");
         }
 

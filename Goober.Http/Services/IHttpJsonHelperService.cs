@@ -7,9 +7,35 @@ namespace Goober.Http.Services
 {
     public interface IHttpJsonHelperService
     {
-        Task<TResponse> ExecuteGetAsync<TResponse>(string urlWithoutQueryParameters, List<KeyValuePair<string, string>> queryParameters = null, int timeoutInMilliseconds = 120000, AuthenticationHeaderValue authenticationHeaderValue = null, List<KeyValuePair<string, string>> headerValues = null, JsonSerializerSettings jsonSerializerSettings = null, long maxContentLength = 307200);
-        Task<string> ExecuteGetStringAsync(string urlWithoutQueryParameters, List<KeyValuePair<string, string>> queryParameters = null, int timeoutInMilliseconds = 120000, AuthenticationHeaderValue authenticationHeaderValue = null, List<KeyValuePair<string, string>> headerValues = null, long maxContentLength = 307200);
-        Task<TResponse> ExecutePostAsync<TResponse, TRequest>(string url, TRequest request, int timeoutInMilliseconds = 120000, AuthenticationHeaderValue authenticationHeaderValue = null, List<KeyValuePair<string, string>> headerValues = null, JsonSerializerSettings jsonSerializerSettings = null, long maxContentLength = 307200);
-        Task<string> ExecutePostStringAsync<TRequest>(string url, TRequest request, int timeoutInMilliseconds = 120000, AuthenticationHeaderValue authenticationHeaderValue = null, List<KeyValuePair<string, string>> headerValues = null, JsonSerializerSettings jsonSerializerSettings = null, long maxContentLength = 307200);
+        Task<TResponse> ExecuteGetAsync<TResponse>(string urlWithoutQueryParameters, 
+            List<KeyValuePair<string, string>> queryParameters = null, 
+            AuthenticationHeaderValue authenticationHeaderValue = null, 
+            List<KeyValuePair<string, string>> headerValues = null, 
+            JsonSerializerSettings jsonSerializerSettings = null,
+            int timeoutInMilliseconds = 120000,
+            long maxContentLength = 307200);
+
+        Task<string> ExecuteGetStringAsync(string urlWithoutQueryParameters, 
+            List<KeyValuePair<string, string>> queryParameters = null, 
+            AuthenticationHeaderValue authenticationHeaderValue = null, 
+            List<KeyValuePair<string, string>> headerValues = null,
+            int timeoutInMilliseconds = 120000, 
+            long maxContentLength = 307200);
+
+        Task<TResponse> ExecutePostAsync<TResponse, TRequest>(string url, 
+            TRequest request, 
+            AuthenticationHeaderValue authenticationHeaderValue = null, 
+            List<KeyValuePair<string, string>> headerValues = null, 
+            JsonSerializerSettings jsonSerializerSettings = null,
+            int timeoutInMilliseconds = 120000,
+            long maxContentLength = 307200);
+
+        Task<string> ExecutePostStringAsync<TRequest>(string url, 
+            TRequest request, 
+            AuthenticationHeaderValue authenticationHeaderValue = null, 
+            List<KeyValuePair<string, string>> headerValues = null, 
+            JsonSerializerSettings jsonSerializerSettings = null,
+            int timeoutInMilliseconds = 120000, 
+            long maxContentLength = 307200);
     }
 }

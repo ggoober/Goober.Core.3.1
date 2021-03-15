@@ -41,10 +41,10 @@ namespace Goober.Http.Services.Implementation
 
         public async Task<TResponse> ExecuteGetAsync<TResponse>(string urlWithoutQueryParameters,
             List<KeyValuePair<string, string>> queryParameters = null,
-            int timeoutInMilliseconds = 120000,
             AuthenticationHeaderValue authenticationHeaderValue = null,
             List<KeyValuePair<string, string>> headerValues = null,
             JsonSerializerSettings jsonSerializerSettings = null,
+            int timeoutInMilliseconds = 120000,
             long maxContentLength = 300 * 1024)
         {
 
@@ -55,14 +55,17 @@ namespace Goober.Http.Services.Implementation
                 headerValues: headerValues,
                 maxContentLength: maxContentLength);
 
+            if (string.IsNullOrEmpty(ret) == true)
+                return default;
+
             return Deserialize<TResponse>(ret, jsonSerializerSettings);
         }
 
         public async Task<string> ExecuteGetStringAsync(string urlWithoutQueryParameters,
             List<KeyValuePair<string, string>> queryParameters = null,
-            int timeoutInMilliseconds = 120000,
             AuthenticationHeaderValue authenticationHeaderValue = null,
             List<KeyValuePair<string, string>> headerValues = null,
+            int timeoutInMilliseconds = 120000,
             long maxContentLength = 300 * 1024)
         {
             using (var httpClient = _httpClientFactory.CreateClient())
@@ -98,10 +101,10 @@ namespace Goober.Http.Services.Implementation
 
         public async Task<TResponse> ExecutePostAsync<TResponse, TRequest>(string url,
             TRequest request,
-            int timeoutInMilliseconds = 120000,
             AuthenticationHeaderValue authenticationHeaderValue = null,
             List<KeyValuePair<string, string>> headerValues = null,
             JsonSerializerSettings jsonSerializerSettings = null,
+            int timeoutInMilliseconds = 120000,
             long maxContentLength = 300 * 1024)
         {
             var ret = await ExecutePostStringAsync(url: url,
@@ -112,15 +115,18 @@ namespace Goober.Http.Services.Implementation
                 jsonSerializerSettings: jsonSerializerSettings,
                 maxContentLength: maxContentLength);
 
+            if (string.IsNullOrEmpty(ret) == true)
+                return default;
+
             return Deserialize<TResponse>(ret, jsonSerializerSettings);
         }
 
         public async Task<string> ExecutePostStringAsync<TRequest>(string url,
             TRequest request,
-            int timeoutInMilliseconds = 120000,
             AuthenticationHeaderValue authenticationHeaderValue = null,
             List<KeyValuePair<string, string>> headerValues = null,
             JsonSerializerSettings jsonSerializerSettings = null,
+            int timeoutInMilliseconds = 120000,
             long maxContentLength = 300 * 1024)
         {
             using (var httpClient = _httpClientFactory.CreateClient())
@@ -170,7 +176,9 @@ namespace Goober.Http.Services.Implementation
 
         private static async Task ThrowExceptionIfResponseIsNotValidAsync(HttpResponseMessage httpResponse, long maxContentLength, string loggingUrl, string loggingStrContent)
         {
-            if (httpResponse.StatusCode == HttpStatusCode.OK)
+            if (httpResponse.StatusCode == HttpStatusCode.OK 
+                || httpResponse.StatusCode == HttpStatusCode.Accepted
+                || httpResponse.StatusCode == HttpStatusCode.Created)
             {
                 if (httpResponse.Content.Headers.ContentLength > maxContentLength)
                 {

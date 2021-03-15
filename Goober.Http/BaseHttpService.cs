@@ -113,6 +113,7 @@ namespace Goober.Http
                 throw new InvalidOperationException($"schemeAndHost is empty by key = {ApiSchemeAndHostConfigKey}");
 
             var url = HttpUtils.BuildUrl(schemeAndHost: schemeAndHost, urlPath: path);
+
             return url;
         }
     }
