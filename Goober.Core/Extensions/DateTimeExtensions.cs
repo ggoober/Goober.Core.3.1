@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 
@@ -6,13 +7,63 @@ namespace Goober.Core.Extensions
 {
     public static class DateTimeExtensions
     {
-        public static DateTime ToDateTime(this string value)
-        {
-            var parseResult = DateTime.Parse(s: value,
-                provider: null,
-                styles: DateTimeStyles.RoundtripKind);
+        private static List<string> CustomDateFormats = new List<string> {
+            "yyyy-MM-dd",
+            "yyyy-MM-dd HH\\:mm\\:ss"
+        };
 
-            return parseResult;
+        private class DateTimeParseResult
+        {
+            public DateTime? DateTime { get; set; }
+        }
+
+        private class DateTimeModelToParse
+        {
+            public string DateTime { get; set; }
+        }
+
+        public static DateTime? ToDateTimeByJsonSerialization(
+            this string dateToParse)
+        {
+            var modelToParse = new DateTimeModelToParse { DateTime = dateToParse };
+            var str = modelToParse.Serialize();
+
+            var ret = str.Deserialize<DateTimeParseResult>();
+
+            return ret?.DateTime;
+        }
+
+        public static DateTime? ToDateTime(
+            this string dateToParse,
+            List<string> formats = null,
+            IFormatProvider provider = null,
+            DateTimeStyles styles = DateTimeStyles.AssumeUniversal)
+        {
+            DateTime validDate;
+
+            var dateFormats = formats ?? CustomDateFormats;
+
+            foreach (var format in dateFormats)
+            {
+                if (format.EndsWith("Z"))
+                {
+                    if (DateTime.TryParseExact(dateToParse, format,
+                             provider,
+                             DateTimeStyles.AssumeLocal,
+                             out validDate))
+                    {
+                        return validDate;
+                    }
+                }
+
+                if (DateTime.TryParseExact(dateToParse, format,
+                         provider, styles, out validDate))
+                {
+                    return validDate;
+                }
+            }
+
+            return null;
         }
 
         public static DateTime? ToDateTimeApproximately(this string value, DateTime currentDateTime, int maxDeltaInHours, out bool wasOutOfDelta)

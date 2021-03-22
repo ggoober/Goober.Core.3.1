@@ -10,7 +10,7 @@ namespace Goober.Core.Extensions
         private static readonly JsonSerializerSettings _jsonSerializerSettings = new JsonSerializerSettings
         {
             Converters = new List<JsonConverter> { new StringEnumConverter() },
-            ReferenceLoopHandling = ReferenceLoopHandling.Ignore,
+            ReferenceLoopHandling = ReferenceLoopHandling.Serialize,
             ContractResolver = new CamelCasePropertyNamesContractResolver(),
             NullValueHandling = NullValueHandling.Ignore,
             Culture = System.Globalization.CultureInfo.InvariantCulture,
