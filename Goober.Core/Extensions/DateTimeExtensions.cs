@@ -28,9 +28,15 @@ namespace Goober.Core.Extensions
             var modelToParse = new DateTimeModelToParse { DateTime = dateToParse };
             var str = modelToParse.Serialize();
 
-            var ret = str.Deserialize<DateTimeParseResult>();
-
-            return ret?.DateTime;
+            try
+            {
+                var ret = str.Deserialize<DateTimeParseResult>();
+                return ret?.DateTime;
+            }
+            catch
+            {
+                return null;
+            }
         }
 
         public static DateTime? ToDateTime(
