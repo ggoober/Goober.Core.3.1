@@ -5,7 +5,9 @@ VisualStudioVersion = 16.0.29806.167
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Goober.Core", "Goober.Core\Goober.Core.csproj", "{DAF9822F-63F5-46F8-86AD-02248C50B308}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Goober.Http", "Goober.Http\Goober.Http.csproj", "{725A52CC-7B2D-46CA-BC91-8986E35E17B4}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Goober.Http", "Goober.Http\Goober.Http.csproj", "{725A52CC-7B2D-46CA-BC91-8986E35E17B4}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Goober.CommonModels", "Goober.CommonModels\Goober.CommonModels.csproj", "{A016FFAA-5930-4EC1-A9F0-EA56A714BB67}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -21,6 +23,10 @@ Global
 		{725A52CC-7B2D-46CA-BC91-8986E35E17B4}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{725A52CC-7B2D-46CA-BC91-8986E35E17B4}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{725A52CC-7B2D-46CA-BC91-8986E35E17B4}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A016FFAA-5930-4EC1-A9F0-EA56A714BB67}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A016FFAA-5930-4EC1-A9F0-EA56A714BB67}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A016FFAA-5930-4EC1-A9F0-EA56A714BB67}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A016FFAA-5930-4EC1-A9F0-EA56A714BB67}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
