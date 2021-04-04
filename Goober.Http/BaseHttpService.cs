@@ -19,6 +19,8 @@ namespace Goober.Http
 
         private const string CallSequenceKey = "g-callsec";
 
+        private const string CallSequenceIdKey = "g-callsec-id";
+
         protected readonly IHttpJsonHelperService HttpJsonHelperService;
         protected readonly IHttpContextAccessor HttpContextAccessor;
         private readonly IHostEnvironment _hostEnvironment;
@@ -79,7 +81,7 @@ namespace Goober.Http
                 queryParameters: queryParameters,
                 timeoutInMilliseconds: timeoutMiliseconds,
                 authenticationHeaderValue: authenticationHeaderValue,
-                headerValues: headerValues);
+                headerValues: newHeaderValues);
 
             return result;
         }
@@ -121,7 +123,7 @@ namespace Goober.Http
                     url: url,
                     request: request,
                     authenticationHeaderValue: authenticationHeaderValue,
-                    headerValues: headerValues,
+                    headerValues: newHeaderValues,
                     timeoutInMilliseconds: timeoutInMilliseconds
                 );
 
@@ -159,6 +161,8 @@ namespace Goober.Http
 
             ret.Add(new KeyValuePair<string, string>(CallSequenceKey, strCallSequence));
 
+            ret.Add(GetCallSequenceId());
+
             return ret;
         }
 
@@ -185,6 +189,20 @@ namespace Goober.Http
             }
 
             return ret.Distinct().ToList();
+        }
+
+        private KeyValuePair<string,string> GetCallSequenceId()
+        {
+            var request = HttpContextAccessor.HttpContext?.Request;
+
+            if (request == null || request.Headers.ContainsKey(CallSequenceIdKey) == false)
+            {
+                return new KeyValuePair<string, string>(CallSequenceIdKey, Guid.NewGuid().ToString());
+            }
+
+            var ret = request.Headers[CallSequenceIdKey];
+
+            return new KeyValuePair<string, string>(CallSequenceIdKey, ret);
         }
     }
 }
