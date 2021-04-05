@@ -153,11 +153,9 @@ namespace Goober.Http
 
             var actionName = HttpContextAccessor.HttpContext?.Request?.Path ?? methodName;
 
-            var serviceAndMethodName = $"{AssemblyName}:{actionName}";
+            callSequnce.Add(new CallSequenceHeaderModel { Application = AssemblyName, Method = actionName });
 
-            callSequnce.Add(serviceAndMethodName);
-
-            var strCallSequence = string.Join(";", callSequnce);
+            var strCallSequence = JsonUtils.Serialize(callSequnce);
 
             ret.Add(new KeyValuePair<string, string>(CallSequenceKey, strCallSequence));
 
@@ -166,9 +164,9 @@ namespace Goober.Http
             return ret;
         }
 
-        private List<string> GetCallSequence()
+        private List<CallSequenceHeaderModel> GetCallSequence()
         {
-            var ret = new List<string>();
+            var ret = new List<CallSequenceHeaderModel>();
 
             var isCallSequenceExists = HttpContextAccessor.HttpContext?.Request.Headers.TryGetValue(CallSequenceKey, out var callSequence);
             if (isCallSequenceExists == true)
@@ -177,7 +175,7 @@ namespace Goober.Http
 
                 foreach (var iCallSequenceValue in iCallSequenceValues)
                 {
-                    var methods = iCallSequenceValue.Split(";", StringSplitOptions.RemoveEmptyEntries);
+                    var methods = JsonUtils.Deserialize<List<CallSequenceHeaderModel>>(iCallSequenceValue);
 
                     if (methods.Any() == false)
                     {
@@ -188,7 +186,7 @@ namespace Goober.Http
                 }
             }
 
-            return ret.Distinct().ToList();
+            return ret;
         }
 
         private KeyValuePair<string,string> GetCallSequenceId()
@@ -203,6 +201,13 @@ namespace Goober.Http
             var ret = request.Headers[CallSequenceIdKey];
 
             return new KeyValuePair<string, string>(CallSequenceIdKey, ret);
+        }
+
+        class CallSequenceHeaderModel
+        {
+            public string Application { get; set; }
+
+            public string Method { get; set; }
         }
     }
 }
