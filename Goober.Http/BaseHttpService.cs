@@ -153,13 +153,17 @@ namespace Goober.Http
 
             var actionName = HttpContextAccessor.HttpContext?.Request?.Path ?? methodName;
 
-            callSequnce.Add(new CallSequenceHeaderModel { Application = AssemblyName, Method = actionName });
+            callSequnce.Add(new CallSequenceHeaderModel { Application = AssemblyName, Action = actionName });
 
             var strCallSequence = JsonUtils.Serialize(callSequnce);
 
             ret.Add(new KeyValuePair<string, string>(CallSequenceKey, strCallSequence));
 
-            ret.Add(GetCallSequenceId());
+            var callSequenceId = GetCallSequenceIdFromContextItemsOrGenerateNew();
+            if (string.IsNullOrEmpty(callSequenceId) == false)
+            {
+                ret.Add(new KeyValuePair<string, string>(CallSequenceIdKey, callSequenceId));
+            }
 
             return ret;
         }
@@ -189,25 +193,27 @@ namespace Goober.Http
             return ret;
         }
 
-        private KeyValuePair<string,string> GetCallSequenceId()
+        private string GetCallSequenceIdFromContextItemsOrGenerateNew()
         {
-            var request = HttpContextAccessor.HttpContext?.Request;
+            var contextItems = HttpContextAccessor.HttpContext.Items;
 
-            if (request == null || request.Headers.ContainsKey(CallSequenceIdKey) == false)
+            if (contextItems == null || contextItems.ContainsKey(CallSequenceIdKey) == false)
             {
-                return new KeyValuePair<string, string>(CallSequenceIdKey, Guid.NewGuid().ToString());
+                return Guid.NewGuid().ToString();
             }
 
-            var ret = request.Headers[CallSequenceIdKey];
+            var ret = contextItems[CallSequenceIdKey];
+            if (ret == null)
+                return Guid.NewGuid().ToString();
 
-            return new KeyValuePair<string, string>(CallSequenceIdKey, ret);
+            return ret.ToString();
         }
 
         class CallSequenceHeaderModel
         {
             public string Application { get; set; }
 
-            public string Method { get; set; }
+            public string Action { get; set; }
         }
     }
 }
