@@ -93,11 +93,22 @@ namespace Goober.Http.Services.Implementation
                     httpResponse: httpResponse,
                     maxContentLength: maxContentLength,
                     loggingUrl: url,
-                    loggingStrContent: string.Empty
+                    loggingAuthenticationHeaderValue: authenticationHeaderValue,
+                    loggingHeaderValues: headerValues
                     );
 
+                var responseStream = await httpResponse.Content.ReadAsStreamAsync();
 
+                var responseStringResult = await ReadStreamWithMaxSizeRetrictionAsync(stream: responseStream,
+                    encoding: Encoding.UTF8,
+                    maxSize: maxContentLength);
 
+                if (responseStringResult.IsReadToTheEnd == false)
+                {
+                    var loggingStrContent = GetStringContentForLoggingFromHeaders(authenticationHeaderValue: authenticationHeaderValue, headerValues: headerValues);
+
+                    throw new WebException($"response content length is grater then {maxContentLength}, {{ url = \"{url}\", {loggingStrContent} }} ");
+                }
                 var ret = await httpResponse.Content.ReadAsStringAsync();
 
                 return ret;
@@ -238,7 +249,7 @@ namespace Goober.Http.Services.Implementation
             return JsonConvert.SerializeObject(value, serializerSettings ?? _jsonSerializerSettings);
         }
 
-        private static T Deserialize<T>(string value, 
+        private static T Deserialize<T>(string value,
             JsonSerializerSettings serializerSettings,
             string loggingUrl,
             AuthenticationHeaderValue authenticationHeaderValue,
@@ -256,36 +267,43 @@ namespace Goober.Http.Services.Implementation
             }
         }
 
-        private static async Task ThrowExceptionIfResponseIsNotValidAsync(HttpResponseMessage httpResponse, long maxContentLength, string loggingUrl, string loggingStrContent)
+        private async Task ThrowExceptionIfResponseIsNotValidAsync(HttpResponseMessage httpResponse,
+            long maxContentLength,
+            string loggingUrl,
+            AuthenticationHeaderValue loggingAuthenticationHeaderValue,
+            List<KeyValuePair<string, string>> loggingHeaderValues)
         {
-            if (httpResponse.StatusCode == HttpStatusCode.OK 
+            if (httpResponse.StatusCode == HttpStatusCode.OK
                 || httpResponse.StatusCode == HttpStatusCode.Accepted
                 || httpResponse.StatusCode == HttpStatusCode.Created)
             {
-                if (httpResponse.Content.Headers.ContentLength > maxContentLength)
-                {
-                    throw new WebException($"Response ({loggingUrl}) content-length ({maxContentLength}) exceeded, content: {loggingStrContent}");
-                }
-
                 return;
             }
 
-            var exception = new WebException($"Request({loggingUrl}) fault with code = {httpResponse.StatusCode}, data: {loggingStrContent}");
+            var loggingStrContent = GetStringContentForLoggingFromHeaders(authenticationHeaderValue: loggingAuthenticationHeaderValue, headerValues: loggingHeaderValues);
 
-            if (httpResponse.Content.Headers.ContentLength <= maxContentLength)
+            var exception = new WebException($"Request fault with code = {httpResponse.StatusCode}, url = \"{loggingUrl}\", data = \"{loggingStrContent}\"");
+
+            using (var responseStream = await httpResponse.Content.ReadAsStreamAsync())
             {
-                var errorString = await httpResponse.Content.ReadAsStringAsync();
-                exception.Data["error"] = errorString;
+                var readResponseResult = await ReadStreamWithMaxSizeRetrictionAsync(stream: responseStream,
+                    encoding: Encoding.UTF8,
+                    maxSize: maxContentLength);
+
+                if (readResponseResult.IsReadToTheEnd == false)
+                {
+                    readResponseResult.StringResult.AppendLine();
+                    readResponseResult.StringResult.Append($"<<< NOT END, response size is greter than {maxContentLength}");
+                }
+
+                exception.Data["response"] = readResponseResult.StringResult.ToString();
             }
 
             throw exception;
         }
-
-        private async Task<string> ReadResponseWithMaxSizeRetrictionAsync(Stream stream, 
+        private async Task<(bool IsReadToTheEnd, StringBuilder StringResult)> ReadStreamWithMaxSizeRetrictionAsync(Stream stream,
             Encoding encoding,
-            string loggingUrl,
-            string loggingStrContent,
-            int maxSize,
+            long maxSize,
             int bufferSize = 1024)
         {
             if (stream.CanRead == false)
@@ -295,7 +313,7 @@ namespace Goober.Http.Services.Implementation
 
             var totalBytesRead = 0;
 
-            var ret = new StringBuilder();
+            var sbResult = new StringBuilder();
 
             byte[] buffer = new byte[bufferSize];
             var bytesRead = await stream.ReadAsync(buffer, 0, bufferSize);
@@ -306,16 +324,15 @@ namespace Goober.Http.Services.Implementation
 
                 if (totalBytesRead > maxSize)
                 {
-                    throw new InvalidOperationException($"stream response size is greter than {maxSize}, url = {loggingUrl}, content = {loggingStrContent}");
+                    return (false, sbResult);
                 }
 
-                ret.Append(encoding.GetString(bytes: buffer, index: 0, count: bytesRead));
+                sbResult.Append(encoding.GetString(bytes: buffer, index: 0, count: bytesRead));
 
                 bytesRead = await stream.ReadAsync(buffer, 0, bufferSize);
-
             }
 
-            return ret.ToString();
+            return (true, sbResult);
         }
 
         private string GetStringContentForLoggingFromHeaders(AuthenticationHeaderValue authenticationHeaderValue,
