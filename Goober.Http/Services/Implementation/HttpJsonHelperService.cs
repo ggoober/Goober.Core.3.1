@@ -12,6 +12,7 @@ using Goober.Http.Utils;
 using Microsoft.AspNetCore.Http;
 using System.IO;
 using System.Linq;
+using Goober.Http.Models.Internal;
 
 namespace Goober.Http.Services.Implementation
 {
@@ -50,7 +51,6 @@ namespace Goober.Http.Services.Implementation
             int timeoutInMilliseconds = 120000,
             long maxContentLength = 300 * 1024)
         {
-
             var ret = await ExecuteGetStringAsync(urlWithoutQueryParameters: urlWithoutQueryParameters,
                 queryParameters: queryParameters,
                 timeoutInMilliseconds: timeoutInMilliseconds,
@@ -61,7 +61,13 @@ namespace Goober.Http.Services.Implementation
             if (string.IsNullOrEmpty(ret) == true)
                 return default;
 
-            return Deserialize<TResponse>(ret, jsonSerializerSettings);
+            var url = HttpUtils.BuildUrlWithQueryParameters(urlWithoutQueryParameters, queryParameters);
+
+            return Deserialize<TResponse>(value: ret,
+                serializerSettings: jsonSerializerSettings,
+                loggingUrl: url,
+                loggingAuthenticationHeaderValue: authenticationHeaderValue,
+                loggingHeaderValues: headerValues);
         }
 
         public async Task<string> ExecuteGetStringAsync(string urlWithoutQueryParameters,
@@ -70,6 +76,16 @@ namespace Goober.Http.Services.Implementation
             List<KeyValuePair<string, string>> headerValues = null,
             int timeoutInMilliseconds = 120000,
             long maxContentLength = 300 * 1024)
+        {
+            
+        }
+
+        private async Task<(string Result, HttpRequestContextModel<HttpRequestNoContentModel> HttpRequestLoggingContext)> ExecuteGetStringInternalAsync(string urlWithoutQueryParameters,
+            List<KeyValuePair<string, string>> queryParameters,
+            AuthenticationHeaderValue authenticationHeaderValue,
+            List<KeyValuePair<string, string>> headerValues,
+            int timeoutInMilliseconds,
+            long maxContentLength)
         {
             using (var httpClient = _httpClientFactory.CreateClient())
             {
@@ -89,27 +105,14 @@ namespace Goober.Http.Services.Implementation
                     return default;
                 }
 
-                await GetResponseStringAndProcessResponseStatusCodeAsync(
+                var ret = await GetResponseStringAndProcessResponseStatusCodeAsync(
                     httpResponse: httpResponse,
                     maxContentLength: maxContentLength,
                     loggingUrl: url,
+                    loggingStrJsonContent: null,
                     loggingAuthenticationHeaderValue: authenticationHeaderValue,
                     loggingHeaderValues: headerValues
                     );
-
-                var responseStream = await httpResponse.Content.ReadAsStreamAsync();
-
-                var responseStringResult = await ReadStreamWithMaxSizeRetrictionAsync(stream: responseStream,
-                    encoding: Encoding.UTF8,
-                    maxSize: maxContentLength);
-
-                if (responseStringResult.IsReadToTheEnd == false)
-                {
-                    var loggingStrContent = GetStringContentForLoggingFromHeaders(authenticationHeaderValue: authenticationHeaderValue, headerValues: headerValues);
-
-                    throw new WebException($"response content length is grater then {maxContentLength}, {{ url = \"{url}\", {loggingStrContent} }} ");
-                }
-                var ret = await httpResponse.Content.ReadAsStringAsync();
 
                 return ret;
             }
@@ -134,7 +137,14 @@ namespace Goober.Http.Services.Implementation
             if (string.IsNullOrEmpty(ret) == true)
                 return default;
 
-            return Deserialize<TResponse>(ret, jsonSerializerSettings);
+            var strJsonContent = Serialize(request, jsonSerializerSettings);
+
+            return Deserialize<TResponse>(value: ret, 
+                serializerSettings: jsonSerializerSettings,
+                loggingUrl: url,
+                loggingStrJsonContent: strJsonContent,
+                loggingAuthenticationHeaderValue: authenticationHeaderValue,
+                loggingHeaderValues: headerValues);
         }
 
         public async Task<string> ExecutePostStringAsync<TRequest>(string url,
@@ -156,9 +166,9 @@ namespace Goober.Http.Services.Implementation
                     headerValues: headerValues,
                     responseMediaTypes: new List<string> { ApplicationJsonContentTypeValue });
 
-                var strContent = Serialize(request, jsonSerializerSettings);
+                var strJsonContent = Serialize(request, jsonSerializerSettings);
 
-                httpRequest.Content = new StringContent(content: strContent, Encoding.UTF8, mediaType: ApplicationJsonContentTypeValue);
+                httpRequest.Content = new StringContent(content: strJsonContent, Encoding.UTF8, mediaType: ApplicationJsonContentTypeValue);
 
                 var httpResponse = await httpClient.SendAsync(httpRequest);
 
@@ -167,12 +177,12 @@ namespace Goober.Http.Services.Implementation
                     return default;
                 }
 
-                await ThrowExceptionIfResponseIsNotValidAsync(httpResponse: httpResponse,
+                var ret = await GetResponseStringAndProcessResponseStatusCodeAsync(httpResponse: httpResponse,
                     maxContentLength: maxContentLength,
                     loggingUrl: url,
-                    loggingStrContent: strContent);
-
-                var ret = await httpResponse.Content.ReadAsStringAsync();
+                    loggingStrJsonContent: strJsonContent,
+                    loggingAuthenticationHeaderValue: authenticationHeaderValue,
+                    loggingHeaderValues: headerValues);
 
                 return ret;
             }
@@ -249,11 +259,12 @@ namespace Goober.Http.Services.Implementation
             return JsonConvert.SerializeObject(value, serializerSettings ?? _jsonSerializerSettings);
         }
 
-        private static T Deserialize<T>(string value,
+        private T Deserialize<T>(string value,
             JsonSerializerSettings serializerSettings,
             string loggingUrl,
-            AuthenticationHeaderValue authenticationHeaderValue,
-            List<KeyValuePair<string, string>> headerValues)
+            string loggingStrJsonContent,
+            AuthenticationHeaderValue loggingAuthenticationHeaderValue,
+            List<KeyValuePair<string, string>> loggingHeaderValues)
         {
             try
             {
@@ -261,8 +272,14 @@ namespace Goober.Http.Services.Implementation
             }
             catch (Exception exc)
             {
-                throw new InvalidOperationException(
-                    message: $"Can't deserialize to type = {typeof(T).Name} from value = {value}, url = {loggingUrl}, content = {loggingStrContent}",
+                var strRequest = GetRequestLoggingString(
+                    url: loggingUrl,
+                    strJsonContent: loggingStrJsonContent,
+                    authenticationHeaderValue: loggingAuthenticationHeaderValue,
+                    headerValues: loggingHeaderValues);
+
+                throw new WebException(
+                    message: $"Can't deserialize to type = \"{typeof(T).Name}\", message = \"{exc.Message}\" from value = \"{value}\", request: {{ {strRequest} }}",
                     innerException: exc);
             }
         }
@@ -270,60 +287,61 @@ namespace Goober.Http.Services.Implementation
         private async Task<string> GetResponseStringAndProcessResponseStatusCodeAsync(HttpResponseMessage httpResponse,
             long maxContentLength,
             string loggingUrl,
+            string loggingStrJsonContent,
             AuthenticationHeaderValue loggingAuthenticationHeaderValue,
             List<KeyValuePair<string, string>> loggingHeaderValues)
         {
-
             string loggingStrContent;
+
+            var responseStringResult = await ReadContentWithMaxSizeRetrictionAsync(httpResponse.Content,
+            encoding: Encoding.UTF8,
+            maxSize: maxContentLength);
 
             if (httpResponse.StatusCode == HttpStatusCode.OK
                 || httpResponse.StatusCode == HttpStatusCode.Accepted
                 || httpResponse.StatusCode == HttpStatusCode.Created)
             {
-                using (var responseStream = await httpResponse.Content.ReadAsStreamAsync())
+                if (responseStringResult.IsReadToTheEnd == true)
                 {
-                    var responseStringResult = await ReadStreamWithMaxSizeRetrictionAsync(stream: responseStream,
-                    encoding: Encoding.UTF8,
-                    maxSize: maxContentLength);
-
-                    if (responseStringResult.IsReadToTheEnd == false)
-                    {
-                        loggingStrContent = GetStringContentForLoggingFromHeaders(
-                            url: loggingUrl,
-                            authenticationHeaderValue: loggingAuthenticationHeaderValue, 
-                            headerValues: loggingHeaderValues);
-
-                        throw new WebException($"Response content length is grater then {maxContentLength}, request: {{ {loggingStrContent} }} ");
-                    }
-
                     return responseStringResult.StringResult.ToString();
                 }
+
+                loggingStrContent = GetRequestLoggingString(
+                        url: loggingUrl, 
+                        strJsonContent: loggingStrJsonContent,
+                        authenticationHeaderValue: loggingAuthenticationHeaderValue,
+                        headerValues: loggingHeaderValues);
+
+                throw new WebException($"Response content length is grater then {maxContentLength}, request: {{ {loggingStrContent} }} ");
             }
 
-            loggingStrContent = GetStringContentForLoggingFromHeaders(url: loggingUrl, 
-                authenticationHeaderValue: loggingAuthenticationHeaderValue, 
+            loggingStrContent = GetRequestLoggingString(url: loggingUrl,
+                authenticationHeaderValue: loggingAuthenticationHeaderValue,
                 headerValues: loggingHeaderValues);
 
-            var exception = new WebException($"Request fault with code = {httpResponse.StatusCode}, request: {{ {loggingStrContent} }}");
+            var exception = new WebException($"Request fault with statusCode = {httpResponse.StatusCode}, request: {{ {loggingStrContent} }}");
 
-            using (var responseStream = await httpResponse.Content.ReadAsStreamAsync())
+            if (responseStringResult.IsReadToTheEnd == false)
             {
-                var readResponseResult = await ReadStreamWithMaxSizeRetrictionAsync(stream: responseStream,
-                    encoding: Encoding.UTF8,
-                    maxSize: maxContentLength);
-
-                if (readResponseResult.IsReadToTheEnd == false)
-                {
-                    readResponseResult.StringResult.AppendLine();
-                    readResponseResult.StringResult.Append($"<<< NOT END, response size is greter than {maxContentLength}");
-                }
-
-                exception.Data["response"] = readResponseResult.StringResult.ToString();
+                responseStringResult.StringResult.AppendLine();
+                responseStringResult.StringResult.Append($"<<< NOT END, response size is greter than {maxContentLength}");
             }
+
+            exception.Data["response"] = responseStringResult.StringResult.ToString();
 
             throw exception;
         }
 
+        private async Task<(bool IsReadToTheEnd, StringBuilder StringResult)> ReadContentWithMaxSizeRetrictionAsync(HttpContent httpContent,
+                    Encoding encoding,
+                    long maxSize,
+                    int bufferSize = 1024)
+        {
+            using (var stream = await httpContent.ReadAsStreamAsync())
+            {
+                return await ReadStreamWithMaxSizeRetrictionAsync(stream, encoding, maxSize, bufferSize);
+            }
+        }
 
         private async Task<(bool IsReadToTheEnd, StringBuilder StringResult)> ReadStreamWithMaxSizeRetrictionAsync(Stream stream,
             Encoding encoding,
@@ -359,8 +377,9 @@ namespace Goober.Http.Services.Implementation
             return (true, sbResult);
         }
 
-        private string GetStringContentForLoggingFromHeaders(
+        private string GetRequestLoggingString(
             string url,
+            string strJsonContent,
             AuthenticationHeaderValue authenticationHeaderValue,
             List<KeyValuePair<string, string>> headerValues)
         {
@@ -371,6 +390,11 @@ namespace Goober.Http.Services.Implementation
             if (authenticationHeaderValue != null)
             {
                 ret.Add($"authenticationHeader: {{ scheme: \"{authenticationHeaderValue.Scheme}\", parameter: \"{authenticationHeaderValue.Parameter}\" }}");
+            }
+
+            if (string.IsNullOrEmpty(strJsonContent) == false)
+            {
+                ret.Add($"content: {strJsonContent}");
             }
 
             if (headerValues != null && headerValues.Any() == true)
