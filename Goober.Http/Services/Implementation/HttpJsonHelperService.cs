@@ -89,7 +89,7 @@ namespace Goober.Http.Services.Implementation
                     return default;
                 }
 
-                await ThrowExceptionIfResponseIsNotValidAsync(
+                await GetResponseStringAndProcessResponseStatusCodeAsync(
                     httpResponse: httpResponse,
                     maxContentLength: maxContentLength,
                     loggingUrl: url,
@@ -267,22 +267,44 @@ namespace Goober.Http.Services.Implementation
             }
         }
 
-        private async Task ThrowExceptionIfResponseIsNotValidAsync(HttpResponseMessage httpResponse,
+        private async Task<string> GetResponseStringAndProcessResponseStatusCodeAsync(HttpResponseMessage httpResponse,
             long maxContentLength,
             string loggingUrl,
             AuthenticationHeaderValue loggingAuthenticationHeaderValue,
             List<KeyValuePair<string, string>> loggingHeaderValues)
         {
+
+            string loggingStrContent;
+
             if (httpResponse.StatusCode == HttpStatusCode.OK
                 || httpResponse.StatusCode == HttpStatusCode.Accepted
                 || httpResponse.StatusCode == HttpStatusCode.Created)
             {
-                return;
+                using (var responseStream = await httpResponse.Content.ReadAsStreamAsync())
+                {
+                    var responseStringResult = await ReadStreamWithMaxSizeRetrictionAsync(stream: responseStream,
+                    encoding: Encoding.UTF8,
+                    maxSize: maxContentLength);
+
+                    if (responseStringResult.IsReadToTheEnd == false)
+                    {
+                        loggingStrContent = GetStringContentForLoggingFromHeaders(
+                            url: loggingUrl,
+                            authenticationHeaderValue: loggingAuthenticationHeaderValue, 
+                            headerValues: loggingHeaderValues);
+
+                        throw new WebException($"Response content length is grater then {maxContentLength}, request: {{ {loggingStrContent} }} ");
+                    }
+
+                    return responseStringResult.StringResult.ToString();
+                }
             }
 
-            var loggingStrContent = GetStringContentForLoggingFromHeaders(authenticationHeaderValue: loggingAuthenticationHeaderValue, headerValues: loggingHeaderValues);
+            loggingStrContent = GetStringContentForLoggingFromHeaders(url: loggingUrl, 
+                authenticationHeaderValue: loggingAuthenticationHeaderValue, 
+                headerValues: loggingHeaderValues);
 
-            var exception = new WebException($"Request fault with code = {httpResponse.StatusCode}, url = \"{loggingUrl}\", data = \"{loggingStrContent}\"");
+            var exception = new WebException($"Request fault with code = {httpResponse.StatusCode}, request: {{ {loggingStrContent} }}");
 
             using (var responseStream = await httpResponse.Content.ReadAsStreamAsync())
             {
@@ -301,6 +323,8 @@ namespace Goober.Http.Services.Implementation
 
             throw exception;
         }
+
+
         private async Task<(bool IsReadToTheEnd, StringBuilder StringResult)> ReadStreamWithMaxSizeRetrictionAsync(Stream stream,
             Encoding encoding,
             long maxSize,
@@ -335,10 +359,14 @@ namespace Goober.Http.Services.Implementation
             return (true, sbResult);
         }
 
-        private string GetStringContentForLoggingFromHeaders(AuthenticationHeaderValue authenticationHeaderValue,
+        private string GetStringContentForLoggingFromHeaders(
+            string url,
+            AuthenticationHeaderValue authenticationHeaderValue,
             List<KeyValuePair<string, string>> headerValues)
         {
             var ret = new List<string>();
+
+            ret.Add($"url: \"{url}\"");
 
             if (authenticationHeaderValue != null)
             {
