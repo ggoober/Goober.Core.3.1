@@ -9,10 +9,8 @@ using Newtonsoft.Json;
 using Newtonsoft.Json.Converters;
 using Newtonsoft.Json.Serialization;
 using Goober.Http.Utils;
-using Microsoft.AspNetCore.Http;
-using System.IO;
-using System.Linq;
 using Goober.Http.Models.Internal;
+using Microsoft.AspNetCore.Http;
 
 namespace Goober.Http.Services.Implementation
 {
@@ -43,60 +41,22 @@ namespace Goober.Http.Services.Implementation
             _httpClientFactory = httpClientFactory;
         }
 
-        public async Task<TResponse> ExecuteGetAsync<TResponse>(string urlWithoutQueryParameters,
-            List<KeyValuePair<string, string>> queryParameters = null,
-            AuthenticationHeaderValue authenticationHeaderValue = null,
-            List<KeyValuePair<string, string>> headerValues = null,
-            JsonSerializerSettings jsonSerializerSettings = null,
-            int timeoutInMilliseconds = 120000,
-            long maxContentLength = 300 * 1024)
-        {
-            var ret = await ExecuteGetStringAsync(urlWithoutQueryParameters: urlWithoutQueryParameters,
-                queryParameters: queryParameters,
-                timeoutInMilliseconds: timeoutInMilliseconds,
-                authenticationHeaderValue: authenticationHeaderValue,
-                headerValues: headerValues,
-                maxContentLength: maxContentLength);
-
-            if (string.IsNullOrEmpty(ret) == true)
-                return default;
-
-            var url = HttpUtils.BuildUrlWithQueryParameters(urlWithoutQueryParameters, queryParameters);
-
-            return Deserialize<TResponse>(value: ret,
-                serializerSettings: jsonSerializerSettings,
-                loggingUrl: url,
-                loggingAuthenticationHeaderValue: authenticationHeaderValue,
-                loggingHeaderValues: headerValues);
-        }
-
-        public async Task<string> ExecuteGetStringAsync(string urlWithoutQueryParameters,
-            List<KeyValuePair<string, string>> queryParameters = null,
-            AuthenticationHeaderValue authenticationHeaderValue = null,
-            List<KeyValuePair<string, string>> headerValues = null,
-            int timeoutInMilliseconds = 120000,
-            long maxContentLength = 300 * 1024)
-        {
-            
-        }
-
-        private async Task<(string Result, HttpRequestContextModel<HttpRequestNoContentModel> HttpRequestLoggingContext)> ExecuteGetStringInternalAsync(string urlWithoutQueryParameters,
-            List<KeyValuePair<string, string>> queryParameters,
-            AuthenticationHeaderValue authenticationHeaderValue,
-            List<KeyValuePair<string, string>> headerValues,
+        private async Task<string> ExecuteGetReturnStringInternalAsync(
+            HttpRequestContextModel<HttpRequestNoContentModel> requestContext,
             int timeoutInMilliseconds,
-            long maxContentLength)
+            long maxResponseContentLength)
         {
             using (var httpClient = _httpClientFactory.CreateClient())
             {
                 httpClient.Timeout = TimeSpan.FromMilliseconds(timeoutInMilliseconds);
-                var url = HttpUtils.BuildUrlWithQueryParameters(urlWithoutQueryParameters, queryParameters);
+
+                var url = HttpUtils.BuildUrlWithQueryParameters(requestContext.Url, requestContext.QueryParameters);
 
                 var httpRequest = HttpUtils.GenerateHttpRequestMessage(
-                    requestUri: url,
+                    requestUrl: url,
                     httpMethodType: HttpMethod.Get,
-                    authenticationHeaderValue: authenticationHeaderValue,
-                    headerValues: headerValues,
+                    authenticationHeaderValue: requestContext.AuthenticationHeaderValue,
+                    headerValues: requestContext.HeaderValues,
                     responseMediaTypes: new List<string> { ApplicationJsonContentTypeValue });
 
                 var httpResponse = await httpClient.SendAsync(httpRequest);
@@ -107,66 +67,88 @@ namespace Goober.Http.Services.Implementation
 
                 var ret = await GetResponseStringAndProcessResponseStatusCodeAsync(
                     httpResponse: httpResponse,
-                    maxContentLength: maxContentLength,
-                    loggingUrl: url,
-                    loggingStrJsonContent: null,
-                    loggingAuthenticationHeaderValue: authenticationHeaderValue,
-                    loggingHeaderValues: headerValues
-                    );
+                    loggingRequestContext: requestContext,
+                    maxResponseContentLength: maxResponseContentLength);
 
                 return ret;
             }
         }
 
-        public async Task<TResponse> ExecutePostAsync<TResponse, TRequest>(string url,
-            TRequest request,
+        public async Task<string> ExecuteGetReturnStringAsync(string urlWithoutQueryParameters,
+            List<KeyValuePair<string, string>> queryParameters = null,
             AuthenticationHeaderValue authenticationHeaderValue = null,
             List<KeyValuePair<string, string>> headerValues = null,
             JsonSerializerSettings jsonSerializerSettings = null,
             int timeoutInMilliseconds = 120000,
-            long maxContentLength = 300 * 1024)
+            long maxResponseContentLength = 300 * 1024)
         {
-            var ret = await ExecutePostStringAsync(url: url,
-                request: request,
+            var requestContext = new HttpRequestContextModel<HttpRequestNoContentModel>
+            {
+                Url = urlWithoutQueryParameters,
+                HttpMethod = HttpMethod.Get,
+                QueryParameters = queryParameters,
+                AuthenticationHeaderValue = authenticationHeaderValue,
+                HeaderValues = headerValues,
+                JsonSerializerSettings = jsonSerializerSettings ?? _jsonSerializerSettings
+            };
+
+            var ret = await ExecuteGetReturnStringInternalAsync(requestContext: requestContext,
                 timeoutInMilliseconds: timeoutInMilliseconds,
-                authenticationHeaderValue: authenticationHeaderValue,
-                headerValues: headerValues,
-                jsonSerializerSettings: jsonSerializerSettings,
-                maxContentLength: maxContentLength);
+                maxResponseContentLength: maxResponseContentLength);
 
-            if (string.IsNullOrEmpty(ret) == true)
-                return default;
-
-            var strJsonContent = Serialize(request, jsonSerializerSettings);
-
-            return Deserialize<TResponse>(value: ret, 
-                serializerSettings: jsonSerializerSettings,
-                loggingUrl: url,
-                loggingStrJsonContent: strJsonContent,
-                loggingAuthenticationHeaderValue: authenticationHeaderValue,
-                loggingHeaderValues: headerValues);
+            return ret;
         }
 
-        public async Task<string> ExecutePostStringAsync<TRequest>(string url,
-            TRequest request,
+        public async Task<TResponse> ExecuteGetAsync<TResponse>(string urlWithoutQueryParameters,
+            List<KeyValuePair<string, string>> queryParameters = null,
             AuthenticationHeaderValue authenticationHeaderValue = null,
             List<KeyValuePair<string, string>> headerValues = null,
             JsonSerializerSettings jsonSerializerSettings = null,
             int timeoutInMilliseconds = 120000,
-            long maxContentLength = 300 * 1024)
+            long maxResponseContentLength = 300 * 1024)
+        {
+            var requestContext = new HttpRequestContextModel<HttpRequestNoContentModel>
+            {
+                Url = urlWithoutQueryParameters,
+                HttpMethod = HttpMethod.Get,
+                QueryParameters = queryParameters,
+                AuthenticationHeaderValue = authenticationHeaderValue,
+                HeaderValues = headerValues,
+                JsonSerializerSettings = jsonSerializerSettings ?? _jsonSerializerSettings
+            };
+
+            var strRet = await ExecuteGetReturnStringInternalAsync(requestContext: requestContext,
+                timeoutInMilliseconds: timeoutInMilliseconds,
+                maxResponseContentLength: maxResponseContentLength);
+
+            if (string.IsNullOrEmpty(strRet) == true)
+                return default;
+
+            var ret = Deserialize<TResponse, HttpRequestNoContentModel>(value: strRet,
+                jsonSerializerSettings: requestContext.JsonSerializerSettings,
+                loggingRequestContext: requestContext);
+
+            return ret;
+        }
+
+
+        private async Task<string> ExecutePostReturnStringInternalAsync<TRequest>(
+           HttpRequestContextModel<TRequest> requestContext,
+           int timeoutInMilliseconds,
+           long maxResponseContentLength)
         {
             using (var httpClient = _httpClientFactory.CreateClient())
             {
                 httpClient.Timeout = TimeSpan.FromMilliseconds(timeoutInMilliseconds);
 
                 var httpRequest = HttpUtils.GenerateHttpRequestMessage(
-                    requestUri: url,
+                    requestUrl: requestContext.Url,
                     httpMethodType: HttpMethod.Post,
-                    authenticationHeaderValue: authenticationHeaderValue,
-                    headerValues: headerValues,
+                    authenticationHeaderValue: requestContext.AuthenticationHeaderValue,
+                    headerValues: requestContext.HeaderValues,
                     responseMediaTypes: new List<string> { ApplicationJsonContentTypeValue });
 
-                var strJsonContent = Serialize(request, jsonSerializerSettings);
+                var strJsonContent = Serialize(requestContext.RequestContent, requestContext.JsonSerializerSettings);
 
                 httpRequest.Content = new StringContent(content: strJsonContent, Encoding.UTF8, mediaType: ApplicationJsonContentTypeValue);
 
@@ -177,15 +159,73 @@ namespace Goober.Http.Services.Implementation
                     return default;
                 }
 
-                var ret = await GetResponseStringAndProcessResponseStatusCodeAsync(httpResponse: httpResponse,
-                    maxContentLength: maxContentLength,
-                    loggingUrl: url,
-                    loggingStrJsonContent: strJsonContent,
-                    loggingAuthenticationHeaderValue: authenticationHeaderValue,
-                    loggingHeaderValues: headerValues);
+                var ret = await GetResponseStringAndProcessResponseStatusCodeAsync(
+                    httpResponse: httpResponse,
+                    loggingRequestContext: requestContext,
+                    maxResponseContentLength: maxResponseContentLength);
 
                 return ret;
             }
+        }
+
+        public async Task<string> ExecutePostReturnStringAsync<TRequest>(string url,
+           TRequest request,
+           AuthenticationHeaderValue authenticationHeaderValue = null,
+           List<KeyValuePair<string, string>> headerValues = null,
+           JsonSerializerSettings jsonSerializerSettings = null,
+           int timeoutInMilliseconds = 120000,
+           long maxResponseContentLength = 300 * 1024)
+        {
+            var requestContext = new HttpRequestContextModel<TRequest>
+            {
+                Url = url,
+                HttpMethod = HttpMethod.Post,
+                QueryParameters = null,
+                AuthenticationHeaderValue = authenticationHeaderValue,
+                HeaderValues = headerValues,
+                JsonSerializerSettings = jsonSerializerSettings ?? _jsonSerializerSettings,
+                RequestContent = request
+            };
+
+            var ret = await ExecutePostReturnStringInternalAsync(
+                requestContext: requestContext,
+                timeoutInMilliseconds: timeoutInMilliseconds,
+                maxResponseContentLength: maxResponseContentLength);
+
+            return ret;
+        }
+
+        public async Task<TResponse> ExecutePostAsync<TResponse, TRequest>(string url,
+            TRequest request,
+            AuthenticationHeaderValue authenticationHeaderValue = null,
+            List<KeyValuePair<string, string>> headerValues = null,
+            JsonSerializerSettings jsonSerializerSettings = null,
+            int timeoutInMilliseconds = 120000,
+            long maxResponseContentLength = 300 * 1024)
+        {
+            var requestContext = new HttpRequestContextModel<TRequest>
+            {
+                Url = url,
+                HttpMethod = HttpMethod.Post,
+                QueryParameters = null,
+                AuthenticationHeaderValue = authenticationHeaderValue,
+                HeaderValues = headerValues,
+                JsonSerializerSettings = jsonSerializerSettings ?? _jsonSerializerSettings,
+                RequestContent = request
+            };
+
+            var strRet = await ExecutePostReturnStringInternalAsync(
+               requestContext: requestContext,
+               timeoutInMilliseconds: timeoutInMilliseconds,
+               maxResponseContentLength: maxResponseContentLength);
+
+            if (string.IsNullOrEmpty(strRet) == true)
+                return default;
+
+            return Deserialize<TResponse, TRequest>(
+                value: strRet,
+                jsonSerializerSettings: requestContext.JsonSerializerSettings,
+                loggingRequestContext: requestContext);
         }
 
         public async Task<TResponse> UploadFileAsync<TResponse>(string url,
@@ -195,10 +235,45 @@ namespace Goober.Http.Services.Implementation
             List<KeyValuePair<string, string>> headerValues = null,
             JsonSerializerSettings jsonSerializerSettings = null,
             int timeoutInMilliseconds = 120000,
-            long responseMaxContentLength = 30 * 1024)
+            long responseMaxContentLength = 300 * 1024)
         {
-            var contentType = file.ContentType;
+            var strRet = await UploadFileReturnStringAsync(url: url,
+                file: file,
+                formDataFileParameterName: formDataFileParameterName,
+                authenticationHeaderValue: authenticationHeaderValue,
+                headerValues: headerValues,
+                jsonSerializerSettings: jsonSerializerSettings,
+                timeoutInMilliseconds: timeoutInMilliseconds,
+                responseMaxContentLength: responseMaxContentLength);
 
+            if (string.IsNullOrEmpty(strRet) == true)
+                return default;
+
+            var loggingRequestContext = new HttpRequestContextModel<HttpRequestNoContentModel>
+            {
+                Url = url,
+                HttpMethod = HttpMethod.Post,
+                AuthenticationHeaderValue = authenticationHeaderValue,
+                HeaderValues = headerValues,
+                JsonSerializerSettings = jsonSerializerSettings ?? _jsonSerializerSettings,
+                Files = new List<string> { $"{formDataFileParameterName}:{file.FileName};contentType:{file.ContentType};fileLength:{file.Length}" }
+            };
+
+            return Deserialize<TResponse, HttpRequestNoContentModel>(
+                value: strRet,
+                jsonSerializerSettings: loggingRequestContext.JsonSerializerSettings,
+                loggingRequestContext: loggingRequestContext);
+        }
+
+        public async Task<string> UploadFileReturnStringAsync(string url,
+            IFormFile file,
+            string formDataFileParameterName = "file",
+            AuthenticationHeaderValue authenticationHeaderValue = null,
+            List<KeyValuePair<string, string>> headerValues = null,
+            JsonSerializerSettings jsonSerializerSettings = null,
+            int timeoutInMilliseconds = 120000,
+            long responseMaxContentLength = 300 * 1024)
+        {
             using (var fileStream = file.OpenReadStream())
             {
                 using (var httpClient = _httpClientFactory.CreateClient())
@@ -206,7 +281,7 @@ namespace Goober.Http.Services.Implementation
                     httpClient.Timeout = TimeSpan.FromMilliseconds(timeoutInMilliseconds);
 
                     var httpRequest = HttpUtils.GenerateHttpRequestMessage(
-                        requestUri: url,
+                        requestUrl: url,
                         httpMethodType: HttpMethod.Post,
                         authenticationHeaderValue: authenticationHeaderValue,
                         headerValues: null,
@@ -232,22 +307,22 @@ namespace Goober.Http.Services.Implementation
                         return default;
                     }
 
-                    var strContent = $"content: {file.FileName}, headers: {Serialize(headerValues)}";
-
-                    await ThrowExceptionIfResponseIsNotValidAsync(httpResponse: httpResponse,
-                        maxContentLength: responseMaxContentLength,
-                        loggingUrl: url,
-                        loggingStrContent: strContent);
-
-                    var responseStream = await httpResponse.Content.ReadAsStreamAsync();
-                    //ReadResponseWithMaxSizeRetrictionAsync(responseStream, Encoding.UTF8, url, )
-                    var ret = await httpResponse.Content.ReadAsStringAsync();
-                    if (string.IsNullOrEmpty(ret) == true)
+                    var loggingRequestContext = new HttpRequestContextModel<HttpRequestNoContentModel>
                     {
-                        return default;
-                    }
+                        Url = url,
+                        HttpMethod = HttpMethod.Post,
+                        AuthenticationHeaderValue = authenticationHeaderValue,
+                        HeaderValues = headerValues,
+                        JsonSerializerSettings = jsonSerializerSettings ?? _jsonSerializerSettings,
+                        Files = new List<string> { $"{formDataFileParameterName}:{file.FileName};contentType:{file.ContentType};fileLength:{file.Length}" }
+                    };
 
-                    return Deserialize<TResponse>(ret, jsonSerializerSettings);
+                    var ret = await GetResponseStringAndProcessResponseStatusCodeAsync(
+                        httpResponse: httpResponse,
+                        loggingRequestContext: loggingRequestContext,
+                        maxResponseContentLength: responseMaxContentLength);
+
+                    return ret;
                 }
             }
         }
@@ -259,43 +334,29 @@ namespace Goober.Http.Services.Implementation
             return JsonConvert.SerializeObject(value, serializerSettings ?? _jsonSerializerSettings);
         }
 
-        private T Deserialize<T>(string value,
-            JsonSerializerSettings serializerSettings,
-            string loggingUrl,
-            string loggingStrJsonContent,
-            AuthenticationHeaderValue loggingAuthenticationHeaderValue,
-            List<KeyValuePair<string, string>> loggingHeaderValues)
+        private TTarget Deserialize<TTarget, TRequest>(string value,
+            JsonSerializerSettings jsonSerializerSettings,
+            HttpRequestContextModel<TRequest> loggingRequestContext)
         {
             try
             {
-                return JsonConvert.DeserializeObject<T>(value, serializerSettings ?? _jsonSerializerSettings);
+                return JsonConvert.DeserializeObject<TTarget>(value, jsonSerializerSettings ?? _jsonSerializerSettings);
             }
             catch (Exception exc)
             {
-                var strRequest = GetRequestLoggingString(
-                    url: loggingUrl,
-                    strJsonContent: loggingStrJsonContent,
-                    authenticationHeaderValue: loggingAuthenticationHeaderValue,
-                    headerValues: loggingHeaderValues);
-
                 throw new WebException(
-                    message: $"Can't deserialize to type = \"{typeof(T).Name}\", message = \"{exc.Message}\" from value = \"{value}\", request: {{ {strRequest} }}",
+                    message: $"Can't deserialize to type = \"{typeof(TTarget).Name}\", message = \"{exc.Message}\" from value = \"{value}\", request: {Serialize(loggingRequestContext, loggingRequestContext.JsonSerializerSettings)}",
                     innerException: exc);
             }
         }
 
-        private async Task<string> GetResponseStringAndProcessResponseStatusCodeAsync(HttpResponseMessage httpResponse,
-            long maxContentLength,
-            string loggingUrl,
-            string loggingStrJsonContent,
-            AuthenticationHeaderValue loggingAuthenticationHeaderValue,
-            List<KeyValuePair<string, string>> loggingHeaderValues)
+        private async Task<string> GetResponseStringAndProcessResponseStatusCodeAsync<TRequest>(HttpResponseMessage httpResponse,
+            HttpRequestContextModel<TRequest> loggingRequestContext,
+            long maxResponseContentLength)
         {
-            string loggingStrContent;
-
             var responseStringResult = await ReadContentWithMaxSizeRetrictionAsync(httpResponse.Content,
-            encoding: Encoding.UTF8,
-            maxSize: maxContentLength);
+                encoding: Encoding.UTF8,
+                maxSize: maxResponseContentLength);
 
             if (httpResponse.StatusCode == HttpStatusCode.OK
                 || httpResponse.StatusCode == HttpStatusCode.Accepted
@@ -306,28 +367,16 @@ namespace Goober.Http.Services.Implementation
                     return responseStringResult.StringResult.ToString();
                 }
 
-                loggingStrContent = GetRequestLoggingString(
-                        url: loggingUrl, 
-                        strJsonContent: loggingStrJsonContent,
-                        authenticationHeaderValue: loggingAuthenticationHeaderValue,
-                        headerValues: loggingHeaderValues);
-
-                throw new WebException($"Response content length is grater then {maxContentLength}, request: {{ {loggingStrContent} }} ");
+                throw new WebException($"Response content length is grater then {maxResponseContentLength}, request: {Serialize(loggingRequestContext, loggingRequestContext.JsonSerializerSettings)} ");
             }
-
-            loggingStrContent = GetRequestLoggingString(url: loggingUrl,
-                authenticationHeaderValue: loggingAuthenticationHeaderValue,
-                headerValues: loggingHeaderValues);
-
-            var exception = new WebException($"Request fault with statusCode = {httpResponse.StatusCode}, request: {{ {loggingStrContent} }}");
+            
+            var exception = new WebException($"Request fault with statusCode = {httpResponse.StatusCode}, response: {responseStringResult.StringResult}, request: {Serialize(loggingRequestContext, loggingRequestContext.JsonSerializerSettings)}");
 
             if (responseStringResult.IsReadToTheEnd == false)
             {
                 responseStringResult.StringResult.AppendLine();
-                responseStringResult.StringResult.Append($"<<< NOT END, response size is greter than {maxContentLength}");
+                responseStringResult.StringResult.Append($"<<< NOT END, response size is greter than {maxResponseContentLength}");
             }
-
-            exception.Data["response"] = responseStringResult.StringResult.ToString();
 
             throw exception;
         }
@@ -339,77 +388,34 @@ namespace Goober.Http.Services.Implementation
         {
             using (var stream = await httpContent.ReadAsStreamAsync())
             {
-                return await ReadStreamWithMaxSizeRetrictionAsync(stream, encoding, maxSize, bufferSize);
-            }
-        }
-
-        private async Task<(bool IsReadToTheEnd, StringBuilder StringResult)> ReadStreamWithMaxSizeRetrictionAsync(Stream stream,
-            Encoding encoding,
-            long maxSize,
-            int bufferSize = 1024)
-        {
-            if (stream.CanRead == false)
-            {
-                throw new InvalidOperationException("stream is not ready to ready");
-            }
-
-            var totalBytesRead = 0;
-
-            var sbResult = new StringBuilder();
-
-            byte[] buffer = new byte[bufferSize];
-            var bytesRead = await stream.ReadAsync(buffer, 0, bufferSize);
-
-            while (bytesRead > 0)
-            {
-                totalBytesRead += bytesRead;
-
-                if (totalBytesRead > maxSize)
+                if (stream.CanRead == false)
                 {
-                    return (false, sbResult);
+                    throw new InvalidOperationException("stream is not ready to ready");
                 }
 
-                sbResult.Append(encoding.GetString(bytes: buffer, index: 0, count: bytesRead));
+                var totalBytesRead = 0;
 
-                bytesRead = await stream.ReadAsync(buffer, 0, bufferSize);
-            }
+                var sbResult = new StringBuilder();
 
-            return (true, sbResult);
-        }
+                byte[] buffer = new byte[bufferSize];
+                var bytesRead = await stream.ReadAsync(buffer, 0, bufferSize);
 
-        private string GetRequestLoggingString(
-            string url,
-            string strJsonContent,
-            AuthenticationHeaderValue authenticationHeaderValue,
-            List<KeyValuePair<string, string>> headerValues)
-        {
-            var ret = new List<string>();
-
-            ret.Add($"url: \"{url}\"");
-
-            if (authenticationHeaderValue != null)
-            {
-                ret.Add($"authenticationHeader: {{ scheme: \"{authenticationHeaderValue.Scheme}\", parameter: \"{authenticationHeaderValue.Parameter}\" }}");
-            }
-
-            if (string.IsNullOrEmpty(strJsonContent) == false)
-            {
-                ret.Add($"content: {strJsonContent}");
-            }
-
-            if (headerValues != null && headerValues.Any() == true)
-            {
-                var retHeaders = new List<string>();
-
-                foreach (var iHeaderValue in headerValues)
+                while (bytesRead > 0)
                 {
-                    retHeaders.Add($"{{ key: \"{iHeaderValue.Key}\", value: \"{iHeaderValue.Value}\" }}");
+                    totalBytesRead += bytesRead;
+
+                    if (totalBytesRead > maxSize)
+                    {
+                        return (false, sbResult);
+                    }
+
+                    sbResult.Append(encoding.GetString(bytes: buffer, index: 0, count: bytesRead));
+
+                    bytesRead = await stream.ReadAsync(buffer, 0, bufferSize);
                 }
 
-                ret.Add($"headers: [{string.Join(", ", retHeaders)}]");
+                return (true, sbResult);
             }
-
-            return string.Join(", ", ret);
         }
 
         #endregion

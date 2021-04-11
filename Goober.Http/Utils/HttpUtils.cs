@@ -21,7 +21,7 @@ namespace Goober.Http.Utils
         }
 
         public static HttpRequestMessage GenerateHttpRequestMessage(
-            string requestUri,
+            string requestUrl,
             HttpMethod httpMethodType,
             AuthenticationHeaderValue authenticationHeaderValue = null, 
             List<KeyValuePair<string, string>> headerValues = null,
@@ -51,7 +51,7 @@ namespace Goober.Http.Utils
             }
 
             ret.Method = httpMethodType;
-            ret.RequestUri = new Uri(requestUri);
+            ret.RequestUri = new Uri(requestUrl);
 
             return ret;
         }

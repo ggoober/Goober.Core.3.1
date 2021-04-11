@@ -65,7 +65,7 @@ namespace Goober.Http
             return result;
         }
 
-        protected async Task<string> ExecuteGetStringAsync(string path,
+        protected async Task<string> ExecuteGetReturnStringAsync(string path,
             List<KeyValuePair<string, string>> queryParameters,
             string callerMethodName,
             AuthenticationHeaderValue authenticationHeaderValue = null,
@@ -76,7 +76,7 @@ namespace Goober.Http
 
             var urlWithoutQueryParameters = BuildUrlBySchemeAndHostAndPath(path);
 
-            var result = await HttpJsonHelperService.ExecuteGetStringAsync(
+            var result = await HttpJsonHelperService.ExecuteGetReturnStringAsync(
                 urlWithoutQueryParameters: urlWithoutQueryParameters,
                 queryParameters: queryParameters,
                 timeoutInMilliseconds: timeoutMiliseconds,
@@ -108,7 +108,7 @@ namespace Goober.Http
             return result;
         }
 
-        protected async Task<string> ExecutePostStringAsync<TRequest>(string path,
+        protected async Task<string> ExecutePostReturnStringAsync<TRequest>(string path,
             TRequest request,
             string callerMethodName,
             AuthenticationHeaderValue authenticationHeaderValue = null,
@@ -119,7 +119,7 @@ namespace Goober.Http
 
             var url = BuildUrlBySchemeAndHostAndPath(path);
 
-            var result = await HttpJsonHelperService.ExecutePostStringAsync<TRequest>(
+            var result = await HttpJsonHelperService.ExecutePostReturnStringAsync<TRequest>(
                     url: url,
                     request: request,
                     authenticationHeaderValue: authenticationHeaderValue,
