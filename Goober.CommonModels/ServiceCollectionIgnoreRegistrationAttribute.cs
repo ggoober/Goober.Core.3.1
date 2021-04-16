@@ -1,6 +1,6 @@
 ﻿using System;
 
-namespace Goober.Core.Attributes
+namespace Goober.CommonModels
 {
     /// <summary>
     /// Добавление этого атрибута принудительно исключает регистрацию элемента в контейнере.

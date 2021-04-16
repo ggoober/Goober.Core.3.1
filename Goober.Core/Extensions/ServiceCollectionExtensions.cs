@@ -1,4 +1,4 @@
-﻿using Goober.Core.Attributes;
+﻿using Goober.CommonModels;
 using Goober.Core.Services;
 using Goober.Core.Services.Implementation;
 using Microsoft.Extensions.DependencyInjection;
