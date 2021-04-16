@@ -1,4 +1,5 @@
 ﻿using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Logging;
 using System;
 using System.Threading.Tasks;
 
@@ -6,21 +7,27 @@ namespace Goober.Core.Services.Implementation
 {
     class CacheProvider : ICacheProvider
     {
-        private class EmptyResultClass
+        private class CacheResult<T>
         {
+            public T TargetObject { get; set; }
+
+            public DateTime? RefreshTime { get; set; }
         }
 
         #region fields
 
         private readonly IMemoryCache _memoryCache;
+        private readonly ILogger<CacheProvider> _logger;
 
         #endregion
 
         #region ctor
 
-        public CacheProvider(IMemoryCache memoryCache)
+        public CacheProvider(IMemoryCache memoryCache,
+            ILogger<CacheProvider> logger)
         {
             _memoryCache = memoryCache;
+            _logger = logger;
         }
 
         #endregion
@@ -32,65 +39,57 @@ namespace Goober.Core.Services.Implementation
             _memoryCache.Remove(cacheKey);
         }
 
-        public T Get<T>(string cacheKey, int cacheTimeInMinutes, Func<T> func)
+        public async Task<T> GetAsync<T>(string cacheKey, int? refreshTimeInMinutes, int? expirationTimeInMinutes, Func<Task<T>> func)
         {
-            var cachedObject = _memoryCache.Get(cacheKey);
+            var cachedResult = _memoryCache.Get(cacheKey) as CacheResult<T>;
 
-            if (cachedObject != null)
+            var currentDateTime = DateTime.Now;
+
+            if (cachedResult != null)
             {
-                if (cachedObject is EmptyResultClass)
+                if (refreshTimeInMinutes.HasValue == true
+                    && cachedResult.RefreshTime <= currentDateTime)
+                {
+                    try
+                    {
+                        cachedResult.TargetObject = await func();
+                        cachedResult.RefreshTime = currentDateTime.AddMinutes(refreshTimeInMinutes.Value);
+                    }
+                    catch (Exception exc)
+                    {
+                        _logger.LogError(exception: exc, message: $"Error while refreshing cache");
+                    }
+                }
+
+                if (cachedResult.TargetObject == null)
                     return default(T);
 
-                return (T)cachedObject;
+                return cachedResult.TargetObject;
             }
-
-            var expensiveObject = func();
-
-            var absoluteExpiration = new DateTimeOffset(DateTime.Now.AddMinutes(cacheTimeInMinutes));
-
-            if (expensiveObject == null)
-            {
-                _memoryCache.Set(key: cacheKey,
-                    value: new EmptyResultClass(),
-                    absoluteExpiration: absoluteExpiration);
-
-                return default(T);
-            }
-
-            _memoryCache.Set(cacheKey, expensiveObject, absoluteExpiration);
-
-            return expensiveObject;
-        }
-
-        public async Task<T> GetAsync<T>(string cacheKey, int cacheTimeInMinutes, Func<Task<T>> func)
-        {
-            var cachedObject = _memoryCache.Get(cacheKey);
-
-            if (cachedObject != null)
-            {
-                if (cachedObject is EmptyResultClass)
-                    return default(T);
-
-                return (T)cachedObject;
-            }
-
 
             var expensiveObject = await func();
+            var absoluteRefreshDateTime = refreshTimeInMinutes.HasValue == true ? currentDateTime.AddMinutes(refreshTimeInMinutes.Value) : (DateTime?)null;
+            var newCachedResult = new CacheResult<T> 
+            { 
+                RefreshTime = absoluteRefreshDateTime, 
+                TargetObject = expensiveObject 
+            };
 
-            var absoluteExpiration = new DateTimeOffset(DateTime.Now.AddMinutes(cacheTimeInMinutes));
-
-            if (expensiveObject == null)
+            if (expirationTimeInMinutes.HasValue == true)
             {
-                _memoryCache.Set(key: cacheKey,
-                    value: new EmptyResultClass(),
-                    absoluteExpiration: absoluteExpiration);
+                var absoluteExpiration = new DateTimeOffset(DateTime.Now.AddMinutes(expirationTimeInMinutes.Value));
 
-                return default(T);
+                _memoryCache.Set(key: cacheKey, value: newCachedResult, absoluteExpiration: absoluteExpiration);
+            }
+            else
+            {
+                _memoryCache.Set(key: cacheKey, value: newCachedResult);
             }
 
-            _memoryCache.Set(cacheKey, expensiveObject, absoluteExpiration);
+            if (newCachedResult.TargetObject == null)
+                return default(T);
 
-            return expensiveObject;
+            return newCachedResult.TargetObject;
         }
 
         #endregion
