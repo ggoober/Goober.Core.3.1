@@ -6,7 +6,7 @@ namespace Goober.Http.Extensions
 {
     public static class ServiceCollectionExtensions
     {
-        public static void AddGooberHttpServices(this IServiceCollection services)
+        public static void AddGooberHttp(this IServiceCollection services)
         {
             services.AddHttpClient();
             services.AddScoped<IHttpJsonHelperService, HttpJsonHelperService>();
