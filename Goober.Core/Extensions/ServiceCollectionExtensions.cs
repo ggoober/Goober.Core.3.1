@@ -16,18 +16,18 @@ namespace Goober.Core.Extensions
             services.AddSingleton<IDateTimeService, DateTimeService>();
         }
 
-        public static void AddGooberCaching(this IServiceCollection services)
+        public static void AddGooberCaching(this IServiceCollection services, long? memoryCacheSizeLimitInBytes)
         {
-            services.AddMemoryCache();
+            services.AddMemoryCache((options) => { options.SizeLimit = memoryCacheSizeLimitInBytes; });
             services.AddSingleton<ICacheProvider, CacheProvider>();
         }
 
         private static readonly List<string> _serviceAndRepositoryPostfix = new List<string> { "Service", "Repository" };
 
-        public static void RegisterClasses(this IServiceCollection services, 
-            Assembly assembly, 
-            List<string> classesPostfix, 
-            ServiceLifetime serviceLifetime, 
+        public static void RegisterClasses(this IServiceCollection services,
+            Assembly assembly,
+            List<string> classesPostfix,
+            ServiceLifetime serviceLifetime,
             bool optional)
         {
             if (classesPostfix == null || classesPostfix.Any() == false)
