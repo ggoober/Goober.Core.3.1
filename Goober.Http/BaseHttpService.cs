@@ -31,7 +31,8 @@ namespace Goober.Http
 
         #region ctor
 
-        protected BaseHttpService(IConfiguration configuration, IHttpJsonHelperService httpJsonHelperService,
+        protected BaseHttpService(IConfiguration configuration, 
+            IHttpJsonHelperService httpJsonHelperService,
             IHttpContextAccessor httpContextAccessor,
             IHostEnvironment hostEnvironment)
         {
@@ -46,14 +47,15 @@ namespace Goober.Http
 
         protected async Task<TResponse> ExecuteGetAsync<TResponse>(string path,
             List<KeyValuePair<string, string>> queryParameters,
-            string callerMethodName,
+            string callerMemberName,
             AuthenticationHeaderValue authenticationHeaderValue = null,
             List<KeyValuePair<string, string>> headerValues = null,
-            int timeoutMiliseconds = 12000)
+            int timeoutMiliseconds = 12000,
+            string overrieApiSchemeAndHost = null)
         {
-            var newHeaderValues = GetHeaderValuesWithCallSequence(headerValues, callerMethodName);
+            var newHeaderValues = GetHeaderValuesWithCallSequence(headerValues, callerMemberName);
 
-            var urlWithoutQueryParameters = BuildUrlBySchemeAndHostAndPath(path);
+            var urlWithoutQueryParameters = BuildUrlBySchemeAndHostAndPath(overrieApiSchemeAndHost: overrieApiSchemeAndHost, path: path);
 
             var result = await HttpJsonHelperService.ExecuteGetAsync<TResponse>(
                 urlWithoutQueryParameters: urlWithoutQueryParameters, 
@@ -67,14 +69,15 @@ namespace Goober.Http
 
         protected async Task<string> ExecuteGetReturnStringAsync(string path,
             List<KeyValuePair<string, string>> queryParameters,
-            string callerMethodName,
+            string callerMemberName,
             AuthenticationHeaderValue authenticationHeaderValue = null,
             List<KeyValuePair<string, string>> headerValues = null,
-            int timeoutMiliseconds = 12000)
+            int timeoutMiliseconds = 12000,
+            string overrieApiSchemeAndHost = null)
         {
-            var newHeaderValues = GetHeaderValuesWithCallSequence(headerValues, callerMethodName);
+            var newHeaderValues = GetHeaderValuesWithCallSequence(headerValues, callerMemberName);
 
-            var urlWithoutQueryParameters = BuildUrlBySchemeAndHostAndPath(path);
+            var urlWithoutQueryParameters = BuildUrlBySchemeAndHostAndPath(overrieApiSchemeAndHost: overrieApiSchemeAndHost, path: path);
 
             var result = await HttpJsonHelperService.ExecuteGetReturnStringAsync(
                 urlWithoutQueryParameters: urlWithoutQueryParameters,
@@ -88,14 +91,15 @@ namespace Goober.Http
 
         protected async Task<TResponse> ExecutePostAsync<TResponse, TRequest>(string path,
             TRequest request,
-            string callerMethodName,
+            string callerMemberName,
             AuthenticationHeaderValue authenticationHeaderValue = null,
             List<KeyValuePair<string, string>> headerValues = null,
-            int timeoutInMilliseconds = 120000)
+            int timeoutInMilliseconds = 120000,
+            string overrieApiSchemeAndHost = null)
         {
-            var newHeaderValues = GetHeaderValuesWithCallSequence(headerValues, callerMethodName);
+            var newHeaderValues = GetHeaderValuesWithCallSequence(headerValues, callerMemberName);
 
-            var url = BuildUrlBySchemeAndHostAndPath(path);
+            var url = BuildUrlBySchemeAndHostAndPath(overrieApiSchemeAndHost: overrieApiSchemeAndHost, path: path);
 
             var result = await HttpJsonHelperService.ExecutePostAsync<TResponse, TRequest>(
                     url: url,
@@ -110,14 +114,15 @@ namespace Goober.Http
 
         protected async Task<string> ExecutePostReturnStringAsync<TRequest>(string path,
             TRequest request,
-            string callerMethodName,
+            string callerMemberName,
             AuthenticationHeaderValue authenticationHeaderValue = null,
             List<KeyValuePair<string, string>> headerValues = null,
-            int timeoutInMilliseconds = 120000)
+            int timeoutInMilliseconds = 120000,
+            string overrieApiSchemeAndHost = null)
         {
-            var newHeaderValues = GetHeaderValuesWithCallSequence(headerValues, callerMethodName);
+            var newHeaderValues = GetHeaderValuesWithCallSequence(headerValues, callerMemberName);
 
-            var url = BuildUrlBySchemeAndHostAndPath(path);
+            var url = BuildUrlBySchemeAndHostAndPath(overrieApiSchemeAndHost: overrieApiSchemeAndHost, path: path);
 
             var result = await HttpJsonHelperService.ExecutePostReturnStringAsync<TRequest>(
                     url: url,
@@ -130,12 +135,13 @@ namespace Goober.Http
             return result;
         }
 
-        protected string BuildUrlBySchemeAndHostAndPath(string path)
+        protected string BuildUrlBySchemeAndHostAndPath(string overrieApiSchemeAndHost, string path)
         {
-            if (string.IsNullOrEmpty(ApiSchemeAndHostConfigKey) == true)
+            if (string.IsNullOrEmpty(overrieApiSchemeAndHost) == true && string.IsNullOrEmpty(ApiSchemeAndHostConfigKey) == true)
                 throw new InvalidOperationException("ApiSchemeAndHostConfigKey is empty");
 
-            var schemeAndHost = Configuration[ApiSchemeAndHostConfigKey];
+
+            var schemeAndHost = string.IsNullOrEmpty(overrieApiSchemeAndHost) == false ? overrieApiSchemeAndHost : Configuration[ApiSchemeAndHostConfigKey];
 
             if (string.IsNullOrEmpty(schemeAndHost))
                 throw new InvalidOperationException($"schemeAndHost is empty by key = {ApiSchemeAndHostConfigKey}");
