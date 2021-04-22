@@ -1,7 +1,6 @@
-﻿using Microsoft.Extensions.Configuration;
-using System;
+﻿using System;
 
-namespace Goober.CommonModels
+namespace Goober.Core.Attributes
 {
     [AttributeUsage(AttributeTargets.Method)]
     public class SwaggerHideInDocsAttribute : Attribute

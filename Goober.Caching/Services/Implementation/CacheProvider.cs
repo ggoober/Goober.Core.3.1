@@ -5,9 +5,9 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using Goober.Core.Models;
+using Goober.Caching.Models;
 
-namespace Goober.Core.Services.Implementation
+namespace Goober.Caching.Services.Implementation
 {
     class CacheProvider : ICacheProvider
     {

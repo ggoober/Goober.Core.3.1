@@ -1,4 +1,4 @@
-﻿using Goober.CommonModels;
+﻿using Goober.Core.Attributes;
 using Goober.Core.Services;
 using Goober.Core.Services.Implementation;
 using Microsoft.Extensions.DependencyInjection;
@@ -14,12 +14,6 @@ namespace Goober.Core.Extensions
         public static void AddGooberDateTimeService(this IServiceCollection services)
         {
             services.AddSingleton<IDateTimeService, DateTimeService>();
-        }
-
-        public static void AddGooberCaching(this IServiceCollection services, long? memoryCacheSizeLimitInBytes)
-        {
-            services.AddMemoryCache((options) => { options.SizeLimit = memoryCacheSizeLimitInBytes; });
-            services.AddSingleton<ICacheProvider, CacheProvider>();
         }
 
         private static readonly List<string> _serviceAndRepositoryPostfix = new List<string> { "Service", "Repository" };

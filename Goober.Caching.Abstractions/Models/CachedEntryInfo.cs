@@ -1,6 +1,6 @@
 ﻿using System;
 
-namespace Goober.Core.Models
+namespace Goober.Caching.Models
 {
     public class CachedEntryInfo
     {

@@ -2,7 +2,7 @@
 using Goober.Http.Services.Implementation;
 using Microsoft.Extensions.DependencyInjection;
 
-namespace Goober.Http.Extensions
+namespace Goober.Http
 {
     public static class ServiceCollectionExtensions
     {

@@ -1,9 +1,9 @@
-﻿using Goober.Core.Models;
+﻿using Goober.Caching.Models;
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 
-namespace Goober.Core.Services
+namespace Goober.Caching.Services
 {
     public interface ICacheProvider
     {
