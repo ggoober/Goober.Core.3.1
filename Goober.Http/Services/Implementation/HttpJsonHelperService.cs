@@ -11,10 +11,11 @@ using Newtonsoft.Json.Serialization;
 using Goober.Http.Utils;
 using Goober.Http.Models.Internal;
 using Microsoft.AspNetCore.Http;
+using System.Linq;
 
 namespace Goober.Http.Services.Implementation
 {
-    class HttpJsonHelperService : IHttpJsonHelperService
+    internal class HttpJsonHelperService : IHttpJsonHelperService
     {
         private static readonly JsonSerializerSettings _jsonSerializerSettings = new JsonSerializerSettings
         {
@@ -131,43 +132,6 @@ namespace Goober.Http.Services.Implementation
             return ret;
         }
 
-
-        private async Task<string> ExecutePostReturnStringInternalAsync<TRequest>(
-           HttpRequestContextModel<TRequest> requestContext,
-           int timeoutInMilliseconds,
-           long maxResponseContentLength)
-        {
-            using (var httpClient = _httpClientFactory.CreateClient())
-            {
-                httpClient.Timeout = TimeSpan.FromMilliseconds(timeoutInMilliseconds);
-
-                var httpRequest = HttpUtils.GenerateHttpRequestMessage(
-                    requestUrl: requestContext.Url,
-                    httpMethodType: HttpMethod.Post,
-                    authenticationHeaderValue: requestContext.AuthenticationHeaderValue,
-                    headerValues: requestContext.HeaderValues,
-                    responseMediaTypes: new List<string> { ApplicationJsonContentTypeValue });
-
-                var strJsonContent = Serialize(requestContext.RequestContent, requestContext.JsonSerializerSettings);
-
-                httpRequest.Content = new StringContent(content: strJsonContent, Encoding.UTF8, mediaType: ApplicationJsonContentTypeValue);
-
-                var httpResponse = await httpClient.SendAsync(httpRequest);
-
-                if (httpResponse.StatusCode == HttpStatusCode.NoContent)
-                {
-                    return default;
-                }
-
-                var ret = await GetResponseStringAndProcessResponseStatusCodeAsync(
-                    httpResponse: httpResponse,
-                    loggingRequestContext: requestContext,
-                    maxResponseContentLength: maxResponseContentLength);
-
-                return ret;
-            }
-        }
-
         public async Task<string> ExecutePostReturnStringAsync<TRequest>(string url,
            TRequest request,
            AuthenticationHeaderValue authenticationHeaderValue = null,
@@ -193,6 +157,70 @@ namespace Goober.Http.Services.Implementation
                 maxResponseContentLength: maxResponseContentLength);
 
             return ret;
+        }
+
+        public async Task<string> ExecutePostFormDataReturnStringAsync<TResponse>(string url,
+            List<KeyValuePair<string, string>> formData,
+            AuthenticationHeaderValue authenticationHeaderValue = null,
+            List<KeyValuePair<string, string>> headerValues = null,
+            JsonSerializerSettings jsonSerializerSettings = null,
+            int timeoutInMilliseconds = 120000,
+            long maxResponseContentLength = 300 * 1024)
+        {
+            var requestContext = new HttpRequestContextModel<HttpRequestNoContentModel>
+            {
+                Url = url,
+                HttpMethod = HttpMethod.Post,
+                QueryParameters = null,
+                AuthenticationHeaderValue = authenticationHeaderValue,
+                HeaderValues = headerValues,
+                JsonSerializerSettings = jsonSerializerSettings ?? _jsonSerializerSettings,
+                FormContent = formData
+            };
+
+            var strRet = await ExecutePostReturnStringInternalAsync(
+               requestContext: requestContext,
+               timeoutInMilliseconds: timeoutInMilliseconds,
+               maxResponseContentLength: maxResponseContentLength);
+
+            if (string.IsNullOrEmpty(strRet) == true)
+                return default;
+
+            return strRet;
+        }
+
+
+        public async Task<TResponse> ExecutePostFormDataAsync<TResponse>(string url,
+            List<KeyValuePair<string, string>> formData,
+            AuthenticationHeaderValue authenticationHeaderValue = null,
+            List<KeyValuePair<string, string>> headerValues = null,
+            JsonSerializerSettings jsonSerializerSettings = null,
+            int timeoutInMilliseconds = 120000,
+            long maxResponseContentLength = 300 * 1024)
+        {
+            var requestContext = new HttpRequestContextModel<HttpRequestNoContentModel>
+            {
+                Url = url,
+                HttpMethod = HttpMethod.Post,
+                QueryParameters = null,
+                AuthenticationHeaderValue = authenticationHeaderValue,
+                HeaderValues = headerValues,
+                JsonSerializerSettings = jsonSerializerSettings ?? _jsonSerializerSettings,
+                FormContent = formData
+            };
+
+            var strRet = await ExecutePostReturnStringInternalAsync(
+               requestContext: requestContext,
+               timeoutInMilliseconds: timeoutInMilliseconds,
+               maxResponseContentLength: maxResponseContentLength);
+
+            if (string.IsNullOrEmpty(strRet) == true)
+                return default;
+
+            return Deserialize<TResponse, HttpRequestNoContentModel>(
+                value: strRet,
+                jsonSerializerSettings: requestContext.JsonSerializerSettings,
+                loggingRequestContext: requestContext);
         }
 
         public async Task<TResponse> ExecutePostAsync<TResponse, TRequest>(string url,
@@ -227,7 +255,7 @@ namespace Goober.Http.Services.Implementation
                 jsonSerializerSettings: requestContext.JsonSerializerSettings,
                 loggingRequestContext: requestContext);
         }
-
+        
         public async Task<TResponse> UploadFileAsync<TResponse>(string url,
             IFormFile file,
             string formDataFileParameterName = "file",
@@ -328,6 +356,58 @@ namespace Goober.Http.Services.Implementation
         }
 
         #region private methods
+
+        private async Task<string> ExecutePostReturnStringInternalAsync<TRequest>(
+           HttpRequestContextModel<TRequest> requestContext,
+           int timeoutInMilliseconds,
+           long maxResponseContentLength)
+        {
+            using (var httpClient = _httpClientFactory.CreateClient())
+            {
+                httpClient.Timeout = TimeSpan.FromMilliseconds(timeoutInMilliseconds);
+
+                var httpRequest = HttpUtils.GenerateHttpRequestMessage(
+                    requestUrl: requestContext.Url,
+                    httpMethodType: HttpMethod.Post,
+                    authenticationHeaderValue: requestContext.AuthenticationHeaderValue,
+                    headerValues: requestContext.HeaderValues,
+                    responseMediaTypes: new List<string> { ApplicationJsonContentTypeValue });
+
+                httpRequest.Content = GetPostContent(requestContext);
+
+                var httpResponse = await httpClient.SendAsync(httpRequest);
+
+                if (httpResponse.StatusCode == HttpStatusCode.NoContent)
+                {
+                    return default;
+                }
+
+                var ret = await GetResponseStringAndProcessResponseStatusCodeAsync(
+                    httpResponse: httpResponse,
+                    loggingRequestContext: requestContext,
+                    maxResponseContentLength: maxResponseContentLength);
+
+                return ret;
+            }
+        }
+
+        private static HttpContent GetPostContent<TRequest>(HttpRequestContextModel<TRequest> requestContext)
+        {
+            if (requestContext.RequestContent != null)
+            {
+                var strJsonContent = Serialize(requestContext.RequestContent, requestContext.JsonSerializerSettings);
+
+                return new StringContent(content: strJsonContent, Encoding.UTF8, mediaType: ApplicationJsonContentTypeValue);
+            }
+            else if (requestContext.FormContent != null && requestContext.FormContent.Any() == true)
+            {
+                return new FormUrlEncodedContent(requestContext.FormContent);
+            }
+            else
+            {
+                throw new NotSupportedException($"Can't get post http content, request: {Serialize(requestContext, requestContext.JsonSerializerSettings)} ");
+            }
+        }
 
         private static string Serialize(object value, JsonSerializerSettings serializerSettings = null)
         {

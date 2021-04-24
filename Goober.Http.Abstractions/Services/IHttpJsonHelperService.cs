@@ -40,6 +40,22 @@ namespace Goober.Http.Services
             int timeoutInMilliseconds = 120000,
             long maxResponseContentLength = 300 * 1024);
 
+        Task<string> ExecutePostFormDataReturnStringAsync<TResponse>(string url,
+            List<KeyValuePair<string, string>> formData,
+            AuthenticationHeaderValue authenticationHeaderValue = null,
+            List<KeyValuePair<string, string>> headerValues = null,
+            JsonSerializerSettings jsonSerializerSettings = null,
+            int timeoutInMilliseconds = 120000,
+            long maxResponseContentLength = 300 * 1024);
+
+        Task<TResponse> ExecutePostFormDataAsync<TResponse>(string url,
+            List<KeyValuePair<string, string>> formData,
+            AuthenticationHeaderValue authenticationHeaderValue = null,
+            List<KeyValuePair<string, string>> headerValues = null,
+            JsonSerializerSettings jsonSerializerSettings = null,
+            int timeoutInMilliseconds = 120000,
+            long maxResponseContentLength = 300 * 1024);
+
         Task<string> UploadFileReturnStringAsync(string url,
             IFormFile file,
             string formDataFileParameterName = "file",

@@ -39,6 +39,14 @@ namespace Goober.Core.Extensions
             }
         }
 
+        public static string ToStringByJsonSerialization(this DateTime? dateTime)
+        {
+            var modelToParse = new DateTimeParseResult { DateTime = dateTime };
+            var res = modelToParse.Serialize();
+
+            return res;
+        }
+
         public static DateTime? ToDateTime(
             this string dateToParse,
             List<string> formats = null,
