@@ -14,7 +14,7 @@ namespace Goober.Core.Extensions
         {
             if (stream.CanRead == false)
             {
-                throw new InvalidOperationException("stream is not ready to ready");
+                throw new InvalidOperationException("stream is not ready to read");
             }
 
             var totalBytesRead = 0;
